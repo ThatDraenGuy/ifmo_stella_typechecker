@@ -1,13 +1,11 @@
 package ru.draen.stella.typecheck.exceptions;
 
-import ru.draen.stella.typecheck.StellaFunction;
+import ru.draen.stella.generated.StellaParser;
 
 public class ErrorDuplicateFunctionDeclaration extends TypeCheckException {
-    private final StellaFunction firstDecl;
-    private final StellaFunction secondDecl;
+    private final StellaParser.DeclFunContext func;
 
-    public ErrorDuplicateFunctionDeclaration(StellaFunction firstDecl, StellaFunction secondDecl) {
-        this.firstDecl = firstDecl;
-        this.secondDecl = secondDecl;
+    public ErrorDuplicateFunctionDeclaration(StellaParser.DeclFunContext func) {
+        this.func = func;
     }
 }

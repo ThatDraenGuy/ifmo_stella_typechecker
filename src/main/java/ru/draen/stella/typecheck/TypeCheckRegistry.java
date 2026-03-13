@@ -7,22 +7,11 @@ import java.util.*;
 public class TypeCheckRegistry {
     private final LinkedList<Scope> scopeStack = new LinkedList<>();
     private Optional<StellaType> expectedType = Optional.empty();
-//    private final Map<String, StellaFunction> funcs = new HashMap<>(); //без локальных функций
 
     public TypeCheckRegistry() {
         enterScope("GLOBAL");
     }
 
-//    public void addFunc(StellaFunction func) {
-//        StellaFunction old = funcs.put(func.name(), func);
-//        if (old != null) {
-//            throw new ErrorDuplicateFunctionDeclaration(old, func);
-//        }
-//    }
-//
-//    public Optional<StellaFunction> getFunc(String name) {
-//        return Optional.ofNullable(funcs.get(name));
-//    }
 
     public void enterScope(String marker) {
         scopeStack.push(new Scope(marker));
@@ -42,8 +31,8 @@ public class TypeCheckRegistry {
         return res;
     }
 
-    public void addVar(String name, StellaType type) {
-        Objects.requireNonNull(scopeStack.peek()).vars.put(name, type);
+    public boolean addVar(String name, StellaType type) {
+        return Objects.requireNonNull(scopeStack.peek()).vars.put(name, type) != null;
     }
 
     public Optional<StellaType> getVar(String name) {

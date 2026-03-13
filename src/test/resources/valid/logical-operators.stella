@@ -2,7 +2,7 @@ language core;
 
 // logical operator not
 fn Bool::not(b : Bool) -> Bool {
-  return let a = false in if b then false else true;
+  return let {a, b} = false in if b then false else true;
 }
 
 // logical operator or
