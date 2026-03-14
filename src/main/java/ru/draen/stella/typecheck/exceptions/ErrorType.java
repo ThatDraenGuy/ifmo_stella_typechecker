@@ -3,7 +3,7 @@ package ru.draen.stella.typecheck.exceptions;
 public enum ErrorType {
     ERROR_MISSING_MAIN(1, ErrorMissingMain.class),
     ERROR_UNDEFINED_VARIABLE(2, ErrorUndefinedVariable.class),
-    ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION(3, null),
+    ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION(3, ErrorUnexpectedTypeForExpression.class),
     ERROR_NOT_A_FUNCTION(4, ErrorNotAFunction.class),
     ERROR_NOT_A_TUPLE(5, ErrorNotATuple.class),
     ERROR_NOT_A_RECORD(6, ErrorNotARecord.class),
