@@ -55,44 +55,35 @@ public class StellaPatternResolver {
                         switch (possible) {
                             case StellaPattern.SuccPattern(Optional<StellaPattern> inner) -> {
                                 Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, inner);
-                                yield remaining.map(newInner -> new StellaPattern.SuccPattern(newInner));
+                                yield remaining.map(StellaPattern.SuccPattern::new);
                             }
-                            case StellaPattern.RangePattern(int num, boolean up) -> {
-                                int unsucc = num - 1;
+                            case StellaPattern.RangePattern(int start, int end) -> {
+                                if (start == 0) {
+                                    int unsucc = end - 1;
+                                    Optional<StellaPattern> unsuccRange = unsucc == 0
+                                            ? Optional.of(new StellaPattern.ZeroPattern())
+                                            : Optional.of(new StellaPattern.RangePattern(start, unsucc));
+                                    Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, unsuccRange)
+                                            .map(StellaPattern.SuccPattern::new);
+                                    yield Stream.concat(Stream.of(new StellaPattern.ZeroPattern()), remaining);
+                                }
+
+                                int unsucc = end - 1;
                                 Optional<StellaPattern> unsuccRange = unsucc == 0
-                                        ? up ? Optional.empty() : Optional.of(new StellaPattern.ZeroPattern())
-                                        : Optional.of(new StellaPattern.RangePattern(num - 1, up));
-
-                                Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, unsuccRange)
-                                        .map(StellaPattern.SuccPattern::new);
-                                yield up ? remaining : Stream.concat(Stream.of(new StellaPattern.ZeroPattern()), remaining);
-
-
-//                                if (unsucc != 0 && !up) {
-//                                    yield Stream.concat(
-//                                            Stream.of(new StellaPattern.ZeroPattern()),
-//                                            actualExhaust(succ.pattern_, nat,
-//                                                    Optional.of(new StellaPattern.RangePattern(num - 1, up)))
-//                                                    .map(StellaPattern.SuccPattern::new)
-//                                    );
-//                                }
-//                                if (unsucc != 0) {
-//                                    yield actualExhaust(succ.pattern_, nat,
-//                                            Optional.of(new StellaPattern.RangePattern(num - 1, up)))
-//                                            .map(StellaPattern.SuccPattern::new);
-//                                }
-//
-//                                if (!up) {
-//                                    yield Stream.concat(
-//                                            Stream.of(new StellaPattern.ZeroPattern()),
-//                                            actualExhaust(succ.pattern_, nat,
-//                                                    Optional.of(new StellaPattern.ZeroPattern()))
-//                                                    .map(StellaPattern.SuccPattern::new)
-//                                    );
-//                                }
-//                                Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, Optional.empty());
-//                                yield remaining.map(newInner -> new StellaPattern.SuccPattern(newInner));
+                                        ? Optional.of(new StellaPattern.ZeroPattern())
+                                        : Optional.of(new StellaPattern.RangePattern(start - 1, unsucc));
+                                Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, unsuccRange);
+                                yield remaining.map(StellaPattern.SuccPattern::new);
                             }
+                            case StellaPattern.BeamPattern(int start) -> {
+                                int unsucc = start - 1;
+                                Optional<StellaPattern> unsuccRange = unsucc == 0
+                                        ? Optional.empty()
+                                        : Optional.of(new StellaPattern.BeamPattern(unsucc));
+                                Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, unsuccRange);
+                                yield remaining.map(StellaPattern.SuccPattern::new);
+                            }
+
                             default -> Stream.of(possible); // zero-pattern
                         };
                 case StellaParser.PatternIntContext intCtx -> {
@@ -100,41 +91,106 @@ public class StellaPatternResolver {
                     if (n == 0) {
                         yield switch (possible) {
                             case StellaPattern.ZeroPattern ignored -> Stream.empty();
-                            case StellaPattern.RangePattern(int num, boolean up) -> {
-                                int unsucc = num - 1;
+                            case StellaPattern.RangePattern(int start, int end) -> {
+                                if (start == 0) {
+                                    int unsucc = end - 1;
+                                    yield Stream.of(
+                                            new StellaPattern.SuccPattern(unsucc == 0
+                                                    ? new StellaPattern.ZeroPattern()
+                                                    : new StellaPattern.RangePattern(start, unsucc))
+                                    );
+                                }
+
+                                int unsucc = end - 1;
                                 yield Stream.of(
                                         new StellaPattern.SuccPattern(unsucc == 0
-                                                ? up ? new StellaPattern.SuccPattern() : new StellaPattern.ZeroPattern()
-                                                : new StellaPattern.RangePattern(unsucc, up))
+                                                ? new StellaPattern.ZeroPattern()
+                                                : new StellaPattern.RangePattern(start - 1, unsucc))
                                 );
                             }
-                            default -> Stream.of(possible);
+                            case StellaPattern.BeamPattern(int start) -> {
+                                int unsucc = start - 1;
+                                yield Stream.of(
+                                        new StellaPattern.SuccPattern(unsucc == 0
+                                                ? new StellaPattern.SuccPattern()
+                                                : new StellaPattern.BeamPattern(unsucc))
+                                );
+                            }
+                            default -> Stream.of(possible); // succ-pattern
                         };
                     }
 
                     //n != 0
-                    yield switch (possible) {
-                        case StellaPattern.SuccPattern(Optional<StellaPattern> inner) -> {
-                            int unsucc = n - 1;
-                            if (unsucc == 0) {
-                                yield Stream.of(new StellaPattern.SuccPattern(new StellaPattern.SuccPattern()));
-                            }
-                            yield Stream.of(
-                                    new StellaPattern.SuccPattern(new StellaPattern.RangePattern(unsucc - 1, false)),
-                                    new StellaPattern.SuccPattern(new StellaPattern.RangePattern(unsucc + 1, true))
-                            );
-                        }
-                        case StellaPattern.RangePattern(int border, boolean up) -> {
-                            if (n <= border && !up) {
+                    int unsucc = n;
+                    Optional<StellaPattern> current = Optional.of(possible);
+                    int succCount = 0;
+                    while (unsucc != 0 && current.isPresent() && current.get() instanceof StellaPattern.SuccPattern(Optional<StellaPattern> inner)) {
+                        current = inner;
+                        unsucc = unsucc - 1;
+                        succCount++;
+                    }
 
-                            }
-                            if (n >= border && up) {
-//                                yield Stream.of(
-//                                        new StellaPattern.RangePattern(border, )
-//                                )
-                            }
+                    // unsucc == 0 || current.isEmpty() || current.get() != SuccPattern
+                    if (current.isEmpty()) {
+                        yield unsucc == 0
+                                ? Stream.of(new StellaPattern.SuccPattern(new StellaPattern.SuccPattern()))
+                                :
+                                Stream.of(
+                                        new StellaPattern.SuccPattern(new StellaPattern.RangePattern(0, unsucc - 1)),
+                                        new StellaPattern.SuccPattern(new StellaPattern.BeamPattern(unsucc + 1))
+                                );
+                    }
+
+                    // unsucc == 0 || current.get() != SuccPattern
+                    if (unsucc == 0 && current.get() instanceof StellaPattern.SuccPattern(Optional<StellaPattern> inner)) {
+                        yield Stream.of(possible);
+                    }
+                    int finalSuccCount = succCount;
+                    Function<Stream<StellaPattern>, Stream<StellaPattern>> yieldSucced = result -> {
+                        for (int i = 0; i < finalSuccCount; i++) {
+                            result = result.map(StellaPattern.SuccPattern::new);
                         }
-                        default -> Stream.of(possible); // zero-pattern
+                        return result;
+                    };
+
+                    //current.get() != SuccPattern
+                    yield switch (current.get()) {
+                        case StellaPattern.RangePattern(int start, int end) -> {
+                            if (start < unsucc && unsucc < end) {
+                                yield yieldSucced.apply(Stream.of(
+                                        new StellaPattern.RangePattern(start, unsucc - 1),
+                                        new StellaPattern.RangePattern(unsucc + 1, end)
+                                ));
+                            }
+                            if (unsucc == start) {
+                                yield yieldSucced.apply(start == end
+                                        ? Stream.empty()
+                                        : Stream.of(new StellaPattern.RangePattern(start + 1, end)));
+                            }
+                            if (unsucc == end) {
+                                yield yieldSucced.apply(Stream.of(new StellaPattern.RangePattern(start, end - 1)));
+                            }
+                            yield Stream.of(possible); //TODO think
+                        }
+                        case StellaPattern.BeamPattern(int start) -> {
+                            if (unsucc > start) {
+                                yield yieldSucced.apply(Stream.of(
+                                        new StellaPattern.RangePattern(start, unsucc - 1),
+                                        new StellaPattern.BeamPattern(unsucc + 1)
+                                ));
+                            }
+                            if (unsucc == start) {
+                                yield yieldSucced.apply(Stream.of(
+                                        new StellaPattern.BeamPattern(unsucc + 1)
+                                ));
+                            }
+                            yield Stream.of(possible); //TODO think
+                        }
+                        case StellaPattern.ZeroPattern ignored -> {
+                            if (unsucc == 0) yield yieldSucced.apply(Stream.empty());
+                            else yield Stream.of(possible);
+                        }
+                        default -> Stream.of(possible);
                     };
                 }
                 default -> throw new ErrorUnexpectedPatternForType(pattern, type);

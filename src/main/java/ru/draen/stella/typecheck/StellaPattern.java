@@ -20,7 +20,8 @@ public sealed interface StellaPattern {
 
         @Override
         public boolean matches(StellaPattern other) {
-            return other instanceof ZeroPattern;
+            return other instanceof ZeroPattern
+                    || other instanceof RangePattern(int start, int end) && start == 0 && end == 0;
         }
     }
     record SuccPattern(Optional<StellaPattern> inner) implements NatPattern {
@@ -38,20 +39,57 @@ public sealed interface StellaPattern {
 
         @Override
         public boolean matches(StellaPattern other) {
-            return other instanceof SuccPattern(Optional<StellaPattern> inner1)
-                    && inner.isEmpty() == inner1.isEmpty()
-                    && (inner.isEmpty() || inner.get().matches(inner1.get()));
+            return (
+                    other instanceof SuccPattern(Optional<StellaPattern> inner1)
+                            && inner.isEmpty() == inner1.isEmpty()
+                            && (inner.isEmpty() || inner.get().matches(inner1.get()))
+            ) || (
+                    other instanceof BeamPattern(int start)
+                            && (
+                                    (
+                                            start == 0 && inner.isEmpty()
+                                    ) || (
+                                            start != 0 && inner.isPresent() && inner.get().matches(new BeamPattern(start - 1))
+                                    )
+                            )
+            ) || (
+                    other instanceof RangePattern(int start, int end)
+                            && start == end
+                            && inner.isPresent()
+                            && inner.get().matches(new RangePattern(start - 1, end - 1))
+            );
         }
     }
-    record RangePattern(int num, boolean up) implements NatPattern {
+    record RangePattern(int start, int end) implements NatPattern {
         @Override
         public String toString() {
-            return up ? (num + "+") : "0-" + num;
+            return start + "-" + end;
         }
 
         @Override
         public boolean matches(StellaPattern other) {
-            return false; //TODO
+            return (
+                    other instanceof RangePattern(int start1, int end1) && start == start1 && end == end1
+            ) || (
+                    other instanceof SuccPattern succ && succ.matches(this)
+            ) || (
+                    other instanceof ZeroPattern zero && zero.matches(this)
+            );
+        }
+    }
+    record BeamPattern(int start) implements NatPattern {
+        @Override
+        public String toString() {
+            return start + "+";
+        }
+
+        @Override
+        public boolean matches(StellaPattern other) {
+            return (
+                    other instanceof BeamPattern(int start1) && start == start1
+            ) || (
+                    other instanceof SuccPattern succ && succ.matches(this)
+            );
         }
     }
 
