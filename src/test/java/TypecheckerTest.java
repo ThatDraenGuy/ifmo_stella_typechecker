@@ -67,29 +67,43 @@ language core;
 extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
 extend with #records, #lists, #unit-type, #variants;
 
-fn main(input : Nat) -> Nat {
+fn main(input : {Nat, Nat}) -> Nat {
   return
     match input {
-      0 => 0
-      | succ(succ(succ(succ(succ(succ(n)))))) => 0
-      | 3 => 0
-      | 1 => 0
-      | 4 => 0
-      | 2 => 0
-      | 5 => 0
-      | 7 => 0              //7
-      | 6 => 0
-      | succ(succ(succ(0))) => 0  //3
-      | succ(0) => 0        //1
-      | 9 => 0
-      | 8 => 0
-      | 10 => 0
-      | succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(n))))))))))) => 0  //11
-      
-      
-//      | succ(succ(succ(succ(n)))) => n
+      {0, _} => 0
+      |{2, 0} => 2
+      |{num, succ(n)} => num
+//      |{succ(succ(n)), 0} => 0
+      |{1, num} => 0
    }
 }
+//language core;
+//extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
+//extend with #records, #lists, #unit-type, #variants;
+//
+//fn main(input : Nat) -> Nat {
+//  return
+//    match input {
+//      0 => 0
+//      | succ(succ(succ(succ(succ(succ(n)))))) => 0
+//      | 3 => 0
+//      | 1 => 0
+//      | 4 => 0
+//      | 2 => 0
+//      | 5 => 0
+//      | 7 => 0              //7
+//      | 6 => 0
+//      | succ(succ(succ(0))) => 0  //3
+//      | succ(0) => 0        //1
+//      | 9 => 0
+//      | 8 => 0
+//      | 10 => 0
+//      | succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(n))))))))))) => 0  //11
+//      
+//      
+////      | succ(succ(succ(succ(n)))) => n
+//   }
+//}
                         """
         );
         assertDoesNotThrow(() -> typeChecker.checkTypes(src));

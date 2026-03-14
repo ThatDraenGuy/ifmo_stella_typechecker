@@ -133,7 +133,7 @@ public class StellaPatternResolver {
                     // unsucc == 0 || current.isEmpty() || current.get() != SuccPattern
                     if (current.isEmpty()) {
                         yield unsucc == 0
-                                ? Stream.of(new StellaPattern.SuccPattern(new StellaPattern.SuccPattern()))
+                                ? Stream.of(new StellaPattern.SuccPattern(new StellaPattern.SuccPattern())) //TODO FIX!!!
                                 :
                                 Stream.of(
                                         new StellaPattern.SuccPattern(new StellaPattern.RangePattern(0, unsucc - 1)),
@@ -342,44 +342,107 @@ public class StellaPatternResolver {
                 default -> throw new ErrorUnexpectedPatternForType(pattern, type);
             };
 
-            case StellaType.StellaList stellaList -> switch (pattern) {
-                case StellaParser.PatternConsContext consCtx -> {
-                    if (!(possible instanceof StellaPattern.ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail))) {
-                        yield Stream.of(possible); // list-pattern
+            case StellaType.StellaList listType -> switch (pattern) {
+                case StellaParser.PatternConsContext consCtx -> switch (possible) {
+                    case StellaPattern.ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail) -> {
+                        List<StellaPattern> remainingHead = actualExhaust(consCtx.head, listType.itemType(), head).toList();
+                        List<StellaPattern> remainingTail = actualExhaust(consCtx.tail, listType, tail).toList();
+
+                        if (remainingHead.isEmpty() && remainingTail.isEmpty()) {
+                            yield Stream.empty(); // "съели" весь паттерн
+                        }
+
+                        if (head.isPresent() && remainingHead.size() == 1 && head.get().matches(remainingHead.getFirst())) {
+                            yield Stream.of(possible); // паттерн не подходит
+                        }
+                        if (tail.isPresent() && remainingTail.size() == 1 && tail.get().matches(remainingTail.getFirst())) {
+                            yield Stream.of(possible); // паттерн не подходит
+                        }
+
+                        //частично "съеденный" паттерн
+
+                        List<Stream<StellaPattern>> toBeMultiplied = List.of(
+                                Stream.concat(head.stream(), remainingHead.stream()),
+                                Stream.concat(tail.stream(), remainingTail.stream())
+                        );
+                        Stream<List<StellaPattern>> products = Utils.productStream(toBeMultiplied);
+                        yield products.map(product -> {
+                            return (StellaPattern) (new StellaPattern.ConsPattern(product.get(0), product.get(1)));
+                        }).skip(1);
                     }
+                    case StellaPattern.ListPattern(List<StellaPattern> items) -> {
 
-                    List<StellaPattern> remainingHead = actualExhaust(consCtx.head, stellaList.itemType(), head).toList();
-                    List<StellaPattern> remainingTail = actualExhaust(consCtx.tail, stellaList, tail).toList();
-
-                    if (remainingHead.isEmpty() && remainingTail.isEmpty()) {
-                        yield Stream.empty(); // "съели" весь паттерн
                     }
-
-                    if (head.isPresent() && remainingHead.size() == 1 && head.get().matches(remainingHead.getFirst())) {
-                        yield Stream.of(possible); // паттерн не подходит
-                    }
-                    if (tail.isPresent() && remainingTail.size() == 1 && tail.get().matches(remainingTail.getFirst())) {
-                        yield Stream.of(possible); // паттерн не подходит
-                    }
-
-                    //частично "съеденный" паттерн
-
-                    List<Stream<StellaPattern>> toBeMultiplied = List.of(
-                            Stream.concat(head.stream(), remainingHead.stream()),
-                            Stream.concat(tail.stream(), remainingTail.stream())
-                    );
-                    Stream<List<StellaPattern>> products = Utils.productStream(toBeMultiplied);
-                    yield products.map(product -> {
-                        return (StellaPattern) (new StellaPattern.ConsPattern(product.get(0), product.get(1)));
-                    }).skip(1);
-                }
-
+                    default -> Stream.of(possible);
+                };
                 case StellaParser.PatternListContext listCtx -> {
                     if (listCtx.patterns.isEmpty()) {
-                        yield exhaust(possible, possible instanceof StellaPattern.ListPattern);
+                        yield switch (possible) {
+                            case StellaPattern.EmptyListPattern ignored -> Stream.empty();
+                            case StellaPattern.ListPattern(List<StellaPattern> items) ->
+                                    exhaust(possible, items.isEmpty());
+                            default -> Stream.of(possible);
+                        };
                     }
 
                     //TODO non empty list pattern
+                    int listIndex = 0;
+                    Optional<StellaPattern> current = Optional.of(possible);
+                    LinkedList<Function<Stream<StellaPattern>, Stream<StellaPattern>>> consYielders = new LinkedList<>();
+                    while (listIndex < listCtx.patterns.size() && current.isPresent()
+                            && current.get() instanceof StellaPattern.ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail)) {
+                        current = tail;
+                        if (head.isPresent()) {
+                            List<StellaPattern> remaining = actualExhaust(listCtx.patterns.get(listIndex), listType.itemType(), head).toList();
+                            if (remaining.isEmpty()) {
+                                consYielders.push(patterns -> patterns.map(
+                                        patt -> new StellaPattern.ConsPattern(head.get(), patt)));
+                            }
+                            if (remaining.size() == 1 && remaining.getFirst().matches(head.get())) {
+                                yield Stream.of(possible);
+                            }
+                            consYielders.push(patterns -> patterns.flatMap(
+                                    patt -> remaining.stream().map(
+                                            someRemaining -> new StellaPattern.ConsPattern(someRemaining, patt)
+                                    ))
+                            );
+                        }
+                        listIndex++;
+                    }
+
+                    Function<Stream<StellaPattern>, Stream<StellaPattern>> yieldConsed = patterns -> {
+                        while (!consYielders.isEmpty()) {
+                            patterns = consYielders.pop().apply(patterns);
+                        }
+                        return patterns;
+                    };
+
+                    //listIndex == patterns.size() || current.isEmpty() || current.get() != ConsPattern
+                    if (current.isEmpty()) {
+//                        yield unsucc == 0
+//                                ? Stream.of(new StellaPattern.SuccPattern(new StellaPattern.SuccPattern()))
+//                                :
+//                                Stream.of(
+//                                        new StellaPattern.SuccPattern(new StellaPattern.RangePattern(0, unsucc - 1)),
+//                                        new StellaPattern.SuccPattern(new StellaPattern.BeamPattern(unsucc + 1))
+//                                );
+
+                        yield listIndex == listCtx.patterns.size()
+                                ? yieldConsed.apply(Stream.of(new StellaPattern.ConsPattern()))
+                                : yieldConsed.apply(listCtx.patterns.stream().skip(listIndex).map(patt -> {
+                                    actualExhaust(patt, listType.itemType(), Optional.empty());
+                        }));
+                    }
+
+                    yield switch (possible) {
+                        case StellaPattern.ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail) -> {
+
+                        }
+                        case StellaPattern.ListPattern(List<StellaPattern> items) -> {
+
+                        }
+                        default -> Stream.of(possible);
+                    };
                     yield Stream.of(possible);
                 }
                 default -> throw new ErrorUnexpectedPatternForType(pattern, type);

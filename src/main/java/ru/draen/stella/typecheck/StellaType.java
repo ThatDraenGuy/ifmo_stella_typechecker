@@ -206,7 +206,7 @@ public sealed interface StellaType {
 
         @Override
         public List<StellaPattern> allPossiblePatterns() {
-            return List.of(new StellaPattern.ConsPattern(), new StellaPattern.ListPattern());
+            return List.of(new StellaPattern.ConsPattern(), new StellaPattern.EmptyListPattern());
         }
     }
 
