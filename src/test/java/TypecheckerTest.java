@@ -63,20 +63,30 @@ public class TypecheckerTest {
     public void temp() {
         CharStream src = CharStreams.fromString(
                 """
-                        language core;
+language core;
+extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
+extend with #records, #lists, #unit-type, #variants;
 
-fn f(a : Bool) -> (fn(Nat)-> Nat){
-  return fn(a : Nat) {
-    return succ(a);
-  }
+fn main(input : Nat) -> Nat {
+  return
+    match input {
+      0 => 0                //0
+//      | 5 => 0
+      | 7 => 0              //7
+//      | succ(succ(succ(0))) => 0  //3
+//      | succ(0) => 0        //1
+      | succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(0))))))))))) => 0  //11
+      
+      
+//      | succ(succ(succ(succ(n)))) => n
+   }
 }
-
-fn main(n : Nat) -> Nat {
-  return f(false)(n);
-}
-                        
                         """
         );
         assertDoesNotThrow(() -> typeChecker.checkTypes(src));
     }
+    //[succ(0-1), succ(3+)]
+    //1-2, 4+
+    //[succ(0), succ(succ(0)), succ(succ(succ(succ(__something__))))]
+    //1, 2, 4+
 }

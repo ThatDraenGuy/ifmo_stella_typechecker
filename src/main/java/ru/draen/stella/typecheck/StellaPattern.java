@@ -43,6 +43,17 @@ public sealed interface StellaPattern {
                     && (inner.isEmpty() || inner.get().matches(inner1.get()));
         }
     }
+    record RangePattern(int num, boolean up) implements NatPattern {
+        @Override
+        public String toString() {
+            return up ? (num + "+") : "0-" + num;
+        }
+
+        @Override
+        public boolean matches(StellaPattern other) {
+            return false; //TODO
+        }
+    }
 
     sealed interface BoolPattern extends StellaPattern {}
     record FalsePattern() implements BoolPattern {

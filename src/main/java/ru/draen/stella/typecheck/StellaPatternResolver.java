@@ -51,22 +51,91 @@ public class StellaPatternResolver {
             };
 
             case StellaType.Nat nat -> switch (pattern) {
-                case StellaParser.PatternSuccContext succ -> {
-                    if (!(possible instanceof StellaPattern.SuccPattern(Optional<StellaPattern> inner))) {
-                        yield Stream.of(possible); // zero-pattern
-                    }
+                case StellaParser.PatternSuccContext succ ->
+                        switch (possible) {
+                            case StellaPattern.SuccPattern(Optional<StellaPattern> inner) -> {
+                                Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, inner);
+                                yield remaining.map(newInner -> new StellaPattern.SuccPattern(newInner));
+                            }
+                            case StellaPattern.RangePattern(int num, boolean up) -> {
+                                int unsucc = num - 1;
+                                Optional<StellaPattern> unsuccRange = unsucc == 0
+                                        ? up ? Optional.empty() : Optional.of(new StellaPattern.ZeroPattern())
+                                        : Optional.of(new StellaPattern.RangePattern(num - 1, up));
 
-                    Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, inner);
-                    yield remaining.map(newInner -> new StellaPattern.SuccPattern(newInner));
-                }
+                                Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, unsuccRange)
+                                        .map(StellaPattern.SuccPattern::new);
+                                yield up ? remaining : Stream.concat(Stream.of(new StellaPattern.ZeroPattern()), remaining);
+
+
+//                                if (unsucc != 0 && !up) {
+//                                    yield Stream.concat(
+//                                            Stream.of(new StellaPattern.ZeroPattern()),
+//                                            actualExhaust(succ.pattern_, nat,
+//                                                    Optional.of(new StellaPattern.RangePattern(num - 1, up)))
+//                                                    .map(StellaPattern.SuccPattern::new)
+//                                    );
+//                                }
+//                                if (unsucc != 0) {
+//                                    yield actualExhaust(succ.pattern_, nat,
+//                                            Optional.of(new StellaPattern.RangePattern(num - 1, up)))
+//                                            .map(StellaPattern.SuccPattern::new);
+//                                }
+//
+//                                if (!up) {
+//                                    yield Stream.concat(
+//                                            Stream.of(new StellaPattern.ZeroPattern()),
+//                                            actualExhaust(succ.pattern_, nat,
+//                                                    Optional.of(new StellaPattern.ZeroPattern()))
+//                                                    .map(StellaPattern.SuccPattern::new)
+//                                    );
+//                                }
+//                                Stream<StellaPattern> remaining = actualExhaust(succ.pattern_, nat, Optional.empty());
+//                                yield remaining.map(newInner -> new StellaPattern.SuccPattern(newInner));
+                            }
+                            default -> Stream.of(possible); // zero-pattern
+                        };
                 case StellaParser.PatternIntContext intCtx -> {
                     int n = Integer.parseInt(intCtx.n.getText());
                     if (n == 0) {
-                        yield exhaust(possible, possible instanceof StellaPattern.ZeroPattern);
+                        yield switch (possible) {
+                            case StellaPattern.ZeroPattern ignored -> Stream.empty();
+                            case StellaPattern.RangePattern(int num, boolean up) -> {
+                                int unsucc = num - 1;
+                                yield Stream.of(
+                                        new StellaPattern.SuccPattern(unsucc == 0
+                                                ? up ? new StellaPattern.SuccPattern() : new StellaPattern.ZeroPattern()
+                                                : new StellaPattern.RangePattern(unsucc, up))
+                                );
+                            }
+                            default -> Stream.of(possible);
+                        };
                     }
 
-                    //TODO non zero pattern
-                    yield Stream.of(possible);
+                    //n != 0
+                    yield switch (possible) {
+                        case StellaPattern.SuccPattern(Optional<StellaPattern> inner) -> {
+                            int unsucc = n - 1;
+                            if (unsucc == 0) {
+                                yield Stream.of(new StellaPattern.SuccPattern(new StellaPattern.SuccPattern()));
+                            }
+                            yield Stream.of(
+                                    new StellaPattern.SuccPattern(new StellaPattern.RangePattern(unsucc - 1, false)),
+                                    new StellaPattern.SuccPattern(new StellaPattern.RangePattern(unsucc + 1, true))
+                            );
+                        }
+                        case StellaPattern.RangePattern(int border, boolean up) -> {
+                            if (n <= border && !up) {
+
+                            }
+                            if (n >= border && up) {
+//                                yield Stream.of(
+//                                        new StellaPattern.RangePattern(border, )
+//                                )
+                            }
+                        }
+                        default -> Stream.of(possible); // zero-pattern
+                    };
                 }
                 default -> throw new ErrorUnexpectedPatternForType(pattern, type);
             };

@@ -13,4 +13,9 @@ public class ErrorNonexhaustiveMatchPatterns extends TypeCheckException {
         this.match = match;
         this.missingPatterns = missingPatterns;
     }
+
+    @Override
+    public String getMessage() {
+        return missingPatterns.toString();
+    }
 }

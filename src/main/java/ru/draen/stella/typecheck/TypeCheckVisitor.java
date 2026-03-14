@@ -387,33 +387,6 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         return maybeExpectedVariant.orElseThrow(() -> new ErrorAmbiguousVariantType(ctx));
     }
 
-    private Map<String, StellaType> resolveMatchVars(StellaParser.PatternContext pattern, StellaType type) {
-        switch (type) {
-            case StellaType.Bool bool -> {
-            }
-            case StellaType.Func func -> {
-            }
-            case StellaType.Nat nat -> {
-            }
-            case StellaType.Record record -> {
-            }
-            case StellaType.StellaList stellaList -> {
-            }
-            case StellaType.Sum sum -> {
-            }
-            case StellaType.Tuple tuple -> {
-            }
-            case StellaType.Unit unit -> {
-            }
-            case StellaType.Variant variant -> {
-            }
-        }
-        return switch (pattern) {
-            case StellaParser.PatternVarContext var -> Map.of(var.name.getText(), type);
-            default -> throw new IllegalStateException("Unexpected value: " + pattern);
-        };
-    }
-
     @Override
     public StellaType visitMatch(StellaParser.MatchContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
