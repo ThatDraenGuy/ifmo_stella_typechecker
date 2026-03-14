@@ -67,14 +67,14 @@ language core;
 extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
 extend with #records, #lists, #unit-type, #variants;
 
-fn main(input : {Nat, Nat}) -> Nat {
+fn main(input : [Nat]) -> Nat {
   return
     match input {
-      {0, _} => 0
-      |{2, 0} => 2
-      |{num, succ(n)} => num
-//      |{succ(succ(n)), 0} => 0
-      |{1, num} => 0
+      [] => 0
+      |[n] => 0
+      |cons(n, cons(succ(m), rest)) => 0
+      |cons(0, cons(0, rest)) => 0
+      |cons(succ(n), cons(0, rest)) => 0
    }
 }
 //language core;

@@ -343,107 +343,18 @@ public class StellaPatternResolver {
             };
 
             case StellaType.StellaList listType -> switch (pattern) {
-                case StellaParser.PatternConsContext consCtx -> switch (possible) {
-                    case StellaPattern.ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail) -> {
-                        List<StellaPattern> remainingHead = actualExhaust(consCtx.head, listType.itemType(), head).toList();
-                        List<StellaPattern> remainingTail = actualExhaust(consCtx.tail, listType, tail).toList();
-
-                        if (remainingHead.isEmpty() && remainingTail.isEmpty()) {
-                            yield Stream.empty(); // "съели" весь паттерн
-                        }
-
-                        if (head.isPresent() && remainingHead.size() == 1 && head.get().matches(remainingHead.getFirst())) {
-                            yield Stream.of(possible); // паттерн не подходит
-                        }
-                        if (tail.isPresent() && remainingTail.size() == 1 && tail.get().matches(remainingTail.getFirst())) {
-                            yield Stream.of(possible); // паттерн не подходит
-                        }
-
-                        //частично "съеденный" паттерн
-
-                        List<Stream<StellaPattern>> toBeMultiplied = List.of(
-                                Stream.concat(head.stream(), remainingHead.stream()),
-                                Stream.concat(tail.stream(), remainingTail.stream())
-                        );
-                        Stream<List<StellaPattern>> products = Utils.productStream(toBeMultiplied);
-                        yield products.map(product -> {
-                            return (StellaPattern) (new StellaPattern.ConsPattern(product.get(0), product.get(1)));
-                        }).skip(1);
-                    }
-                    case StellaPattern.ListPattern(List<StellaPattern> items) -> {
-
-                    }
-                    default -> Stream.of(possible);
-                };
+                case StellaParser.PatternConsContext consCtx ->
+                        resolveListExhaust(new PatternListContext.Real(consCtx), listType, possible);
                 case StellaParser.PatternListContext listCtx -> {
                     if (listCtx.patterns.isEmpty()) {
-                        yield switch (possible) {
-                            case StellaPattern.EmptyListPattern ignored -> Stream.empty();
-                            case StellaPattern.ListPattern(List<StellaPattern> items) ->
-                                    exhaust(possible, items.isEmpty());
-                            default -> Stream.of(possible);
-                        };
+                        yield exhaust(possible, possible instanceof StellaPattern.EmptyListPattern);
                     }
 
-                    //TODO non empty list pattern
-                    int listIndex = 0;
-                    Optional<StellaPattern> current = Optional.of(possible);
-                    LinkedList<Function<Stream<StellaPattern>, Stream<StellaPattern>>> consYielders = new LinkedList<>();
-                    while (listIndex < listCtx.patterns.size() && current.isPresent()
-                            && current.get() instanceof StellaPattern.ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail)) {
-                        current = tail;
-                        if (head.isPresent()) {
-                            List<StellaPattern> remaining = actualExhaust(listCtx.patterns.get(listIndex), listType.itemType(), head).toList();
-                            if (remaining.isEmpty()) {
-                                consYielders.push(patterns -> patterns.map(
-                                        patt -> new StellaPattern.ConsPattern(head.get(), patt)));
-                            }
-                            if (remaining.size() == 1 && remaining.getFirst().matches(head.get())) {
-                                yield Stream.of(possible);
-                            }
-                            consYielders.push(patterns -> patterns.flatMap(
-                                    patt -> remaining.stream().map(
-                                            someRemaining -> new StellaPattern.ConsPattern(someRemaining, patt)
-                                    ))
-                            );
-                        }
-                        listIndex++;
+                    PatternListContext fakeCtx = new PatternListContext.FakeEnd(listCtx);
+                    for (StellaParser.PatternContext patt : listCtx.patterns.reversed()) {
+                        fakeCtx = new PatternListContext.Fake(patt, fakeCtx, listCtx);
                     }
-
-                    Function<Stream<StellaPattern>, Stream<StellaPattern>> yieldConsed = patterns -> {
-                        while (!consYielders.isEmpty()) {
-                            patterns = consYielders.pop().apply(patterns);
-                        }
-                        return patterns;
-                    };
-
-                    //listIndex == patterns.size() || current.isEmpty() || current.get() != ConsPattern
-                    if (current.isEmpty()) {
-//                        yield unsucc == 0
-//                                ? Stream.of(new StellaPattern.SuccPattern(new StellaPattern.SuccPattern()))
-//                                :
-//                                Stream.of(
-//                                        new StellaPattern.SuccPattern(new StellaPattern.RangePattern(0, unsucc - 1)),
-//                                        new StellaPattern.SuccPattern(new StellaPattern.BeamPattern(unsucc + 1))
-//                                );
-
-                        yield listIndex == listCtx.patterns.size()
-                                ? yieldConsed.apply(Stream.of(new StellaPattern.ConsPattern()))
-                                : yieldConsed.apply(listCtx.patterns.stream().skip(listIndex).map(patt -> {
-                                    actualExhaust(patt, listType.itemType(), Optional.empty());
-                        }));
-                    }
-
-                    yield switch (possible) {
-                        case StellaPattern.ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail) -> {
-
-                        }
-                        case StellaPattern.ListPattern(List<StellaPattern> items) -> {
-
-                        }
-                        default -> Stream.of(possible);
-                    };
-                    yield Stream.of(possible);
+                    yield resolveListExhaust(fakeCtx, listType, possible);
                 }
                 default -> throw new ErrorUnexpectedPatternForType(pattern, type);
             };
@@ -465,5 +376,62 @@ public class StellaPatternResolver {
     private Stream<StellaPattern> actualExhaust(StellaParser.PatternContext pattern, StellaType type, List<StellaPattern> current) {
         return current.stream()
                 .flatMap(item -> resolveExhaust(pattern, type, item));
+    }
+
+
+    // костыли для листов
+    private Stream<StellaPattern> actualExhaust(PatternListContext pattern, StellaType.StellaList type, Optional<StellaPattern> current) {
+        return actualExhaust(pattern, type, current.map(List::of).orElseGet(type::allPossiblePatterns));
+    }
+    private Stream<StellaPattern> actualExhaust(PatternListContext pattern, StellaType.StellaList type, List<StellaPattern> current) {
+        return current.stream()
+                .flatMap(item -> resolveListExhaust(pattern, type, item));
+    }
+    private Stream<StellaPattern> resolveListExhaust(PatternListContext listCtx, StellaType.StellaList listType, StellaPattern possible) {
+        if (listCtx instanceof PatternListContext.FakeEnd) {
+            return exhaust(possible, possible instanceof StellaPattern.EmptyListPattern);
+        }
+
+        if (!(possible instanceof StellaPattern.ConsPattern(StellaPattern head, Optional<StellaPattern> tail))) {
+            return Stream.of(possible); // list-pattern
+        }
+
+        List<StellaPattern> remainingHead = switch (listCtx) {
+            case PatternListContext.Fake fake -> actualExhaust(fake.head, listType.itemType(), Optional.of(head)).toList();
+            case PatternListContext.Real real -> actualExhaust(real.consCtx.head, listType.itemType(), Optional.of(head)).toList();
+            default -> throw new IllegalStateException();
+        };
+        List<StellaPattern> remainingTail = switch (listCtx) {
+            case PatternListContext.Fake fake -> actualExhaust(fake.tail, listType, tail).toList();
+            case PatternListContext.Real real -> actualExhaust(real.consCtx.tail, listType, tail).toList();
+            default -> throw new IllegalStateException();
+        };
+
+        if (remainingHead.isEmpty() && remainingTail.isEmpty()) {
+            return Stream.empty(); // "съели" весь паттерн
+        }
+
+        if (remainingHead.size() == 1 && head.matches(remainingHead.getFirst())) {
+            return Stream.of(possible); // паттерн не подходит
+        }
+        if (tail.isPresent() && remainingTail.size() == 1 && tail.get().matches(remainingTail.getFirst())) {
+            return Stream.of(possible); // паттерн не подходит
+        }
+
+        //частично "съеденный" паттерн
+        List<Stream<StellaPattern>> toBeMultiplied = List.of(
+                Stream.concat(Stream.of(head), remainingHead.stream()),
+                Stream.concat(tail.stream(), remainingTail.stream())
+        );
+        Stream<List<StellaPattern>> products = Utils.productStream(toBeMultiplied);
+
+        return products.map(product -> {
+            return (StellaPattern) (new StellaPattern.ConsPattern(product.get(0), product.get(1)));
+        }).skip(tail.isEmpty() ? 0 : 1);
+    }
+    private sealed interface PatternListContext {
+        record Real(StellaParser.PatternConsContext consCtx) implements PatternListContext {}
+        record Fake(StellaParser.PatternContext head, PatternListContext tail, StellaParser.PatternListContext actual) implements PatternListContext {}
+        record FakeEnd(StellaParser.PatternListContext actual) implements PatternListContext {}
     }
 }

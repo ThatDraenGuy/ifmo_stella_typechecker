@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 // да, я джавист. да, я люблю типы-суммы. да, мы существуем
 public sealed interface StellaType {
@@ -206,7 +207,10 @@ public sealed interface StellaType {
 
         @Override
         public List<StellaPattern> allPossiblePatterns() {
-            return List.of(new StellaPattern.ConsPattern(), new StellaPattern.EmptyListPattern());
+            return Stream.concat(Stream.of(
+                    (StellaPattern) new StellaPattern.EmptyListPattern()),
+                    itemType.allPossiblePatterns().stream().map(StellaPattern.ConsPattern::new)
+            ).toList();
         }
     }
 

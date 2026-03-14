@@ -224,54 +224,28 @@ public sealed interface StellaPattern {
 
         @Override
         public boolean matches(StellaPattern other) {
-            return other instanceof EmptyListPattern
-                    || other instanceof ListPattern(List<StellaPattern> items) && items.isEmpty();
+            return other instanceof EmptyListPattern;
         }
     }
-    record ConsPattern(Optional<StellaPattern> head, Optional<StellaPattern> tail) implements StellaListPattern {
-        ConsPattern() {
-            this(Optional.empty(), Optional.empty());
+    record ConsPattern(StellaPattern head, Optional<StellaPattern> tail) implements StellaListPattern {
+        ConsPattern(StellaPattern head) {
+            this(head, Optional.empty());
         }
         ConsPattern(StellaPattern head, StellaPattern tail) {
-            this(Optional.of(head), Optional.of(tail));
+            this(head, Optional.of(tail));
         }
 
         @Override
         public String toString() {
-            return "cons(" + (head.isPresent() ? head.get() : "__something__") + ", " + (tail.isPresent() ? tail.get() : "__something__") + ")";
+            return "cons(" + head + ", " + (tail.isPresent() ? tail.get() : "__something__") + ")";
         }
 
         @Override
         public boolean matches(StellaPattern other) {
-            return (
-                    other instanceof ConsPattern(Optional<StellaPattern> head1, Optional<StellaPattern> tail1)
-                            && head.isEmpty() == head1.isEmpty()
-                            && (head.isEmpty() || head.get().matches(head1.get()))
-                            && tail.isEmpty() == tail1.isEmpty()
-                            && (tail.isEmpty() || tail.get().matches(tail1.get()))
-            ) || (
-                    other instanceof ListPattern(List<StellaPattern> items)
-                            && !items.isEmpty()
-                            && head.isPresent() && head.get().matches(items.getFirst())
-                            && tail.isPresent() && tail.get().matches(new ListPattern(items.stream().skip(1).toList()))
-            );
-        }
-    }
-    record ListPattern(List<StellaPattern> items) implements StellaListPattern {
-        @Override
-        public String toString() {
-            return "[" + items.stream().map(Objects::toString).collect(Collectors.joining(", ")) + "]";
-        }
-
-        @Override
-        public boolean matches(StellaPattern other) {
-            return (
-                    other instanceof ListPattern(List<StellaPattern> items1) && listMatches(items, items1)
-            ) || (
-                    other instanceof EmptyListPattern emptyList && emptyList.matches(this)
-            ) || (
-                    other instanceof ConsPattern cons && cons.matches(this)
-            );
+            return other instanceof ConsPattern(StellaPattern head1, Optional<StellaPattern> tail1)
+                    && head.matches(head1)
+                    && tail.isEmpty() == tail1.isEmpty()
+                    && (tail.isEmpty() || tail.get().matches(tail1.get()));
         }
     }
 
