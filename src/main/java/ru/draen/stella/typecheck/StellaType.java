@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck;
 
+import ru.draen.stella.Utils;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordTypeFields;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateVariantTypeFields;
@@ -7,6 +8,7 @@ import ru.draen.stella.typecheck.exceptions.UnsupportedException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -15,21 +17,46 @@ import java.util.stream.IntStream;
 public sealed interface StellaType {
     //равенство типов
     boolean matches(StellaType other);
+    List<StellaPattern> allPossiblePatterns();
 
     record Bool() implements StellaType {
+        @Override
+        public String toString() {
+            return "Bool";
+        }
 
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Bool;
         }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.FalsePattern(), new StellaPattern.TruePattern());
+        }
     }
     record Nat() implements StellaType {
+        @Override
+        public String toString() {
+            return "Nat";
+        }
+
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Nat;
         }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.ZeroPattern(), new StellaPattern.SuccPattern());
+        }
     }
     record Func(List<StellaType> in, StellaType out) implements StellaType {
+        @Override
+        public String toString() {
+            return "(" + in + ") -> " + out;
+        }
+
         public static Func fromDeclFun(StellaParser.DeclFunContext ctx) {
             return new Func(ctx.paramDecls.stream()
                     .map(decl -> StellaType.fromAst(decl.paramType))
@@ -49,52 +76,137 @@ public sealed interface StellaType {
                     && listMatches(in, in2)
                     && out.matches(out2);
         }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
     }
     record Unit() implements StellaType {
+        @Override
+        public String toString() {
+            return "Unit";
+        }
+
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Unit;
         }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.UnitPattern());
+        }
     }
     record Tuple(List<StellaType> items) implements StellaType {
+        @Override
+        public String toString() {
+            return "{" + items.stream().map(Objects::toString).collect(Collectors.joining(", ")) + "}";
+        }
+
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Tuple(List<StellaType> items2)
                     && listMatches(items, items2);
         }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            List<List<StellaPattern>> patterns = items.stream().map(StellaType::allPossiblePatterns).toList();
+            return Utils.productList(patterns)
+                    .map(set -> (StellaPattern)(new StellaPattern.TuplePattern(set)))
+                    .toList();
+        }
     }
     record Record(Map<String, Item> items) implements StellaType {
+        @Override
+        public String toString() {
+            return "{" + items.values().stream()
+                    .map(Item::toString)
+                    .collect(Collectors.joining(", ")) + "}";
+        }
+
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Record(Map<String, Item> items2)
                     && mapMatches(items, items2, Item::type);
         }
 
-        record Item(String name, StellaType type) {}
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            List<String> names = items.keySet().stream().toList();
+            List<List<StellaPattern>> products = names.stream().map(name -> items.get(name).type.allPossiblePatterns()).toList();
+            return Utils.productList(products)
+                    .map(set -> (StellaPattern) (new StellaPattern.RecordPattern(
+                            IntStream.range(0, names.size()).mapToObj(i -> new StellaPattern.RecordPattern.Item(
+                                    names.get(i), set.get(i)
+                            )).collect(Collectors.toMap(
+                                    StellaPattern.RecordPattern.Item::name,
+                                    Function.identity()
+                            ))
+                    )))
+                    .toList();
+        }
+
+        record Item(String name, StellaType type) {
+            @Override
+            public String toString() {
+                return name + " : " + type;
+            }
+        }
     }
     record Sum(StellaType inl, StellaType inr) implements StellaType {
-        public static final String INL = "inl";
-        public static final String INR = "inr";
+        @Override
+        public String toString() {
+            return inl + " + " + inr;
+        }
 
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Sum(StellaType inl2, StellaType inr2) && inl.matches(inl2) && inr.matches(inr2);
         }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.InlPattern(), new StellaPattern.InrPattern());
+        }
     }
     record Variant(Map<String, Item> items) implements StellaType {
+        @Override
+        public String toString() {
+            return "<|" + items.entrySet().stream()
+                    .map(entry -> entry.getKey() + " : " + entry.getValue())
+                    .collect(Collectors.joining(", ")) + "|>";
+        }
+
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Variant(Map<String, Item> items2)
                     && mapMatches(items, items2, Item::type);
         }
 
-        record Item(String name, StellaType type) {}
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return items.keySet().stream().map(name -> (StellaPattern) (new StellaPattern.VariantPattern(name)))
+                    .toList();
+        }
 
+        record Item(String name, StellaType type) {}
     }
     record StellaList(StellaType itemType) implements StellaType {
         @Override
+        public String toString() {
+            return "[" + itemType + "]";
+        }
+
+        @Override
         public boolean matches(StellaType other) {
             return other instanceof StellaList(StellaType itemType2) && itemType.matches(itemType2);
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.ConsPattern(), new StellaPattern.ListPattern());
         }
     }
 

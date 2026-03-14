@@ -1,5 +1,6 @@
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -58,21 +59,21 @@ public class TypecheckerTest {
     public record IllTypedFile(ErrorType errorType, Path file) {}
 
     @Test
+    @Disabled
     public void temp() {
         CharStream src = CharStreams.fromString(
                 """
                         language core;
-                        extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
-                        extend with #records;
-                        
-                        fn main(input : { a : Nat, b : Bool }) -> Nat {
-                          return
-                            match input {
-                                { a = 0, b = var } => 0
-                                | { a = succ(0), b = true } => succ(0)
-                                | { a = _a, b = _b } => 0
-                           }
-                        }
+
+fn f(a : Bool) -> (fn(Nat)-> Nat){
+  return fn(a : Nat) {
+    return succ(a);
+  }
+}
+
+fn main(n : Nat) -> Nat {
+  return f(false)(n);
+}
                         
                         """
         );

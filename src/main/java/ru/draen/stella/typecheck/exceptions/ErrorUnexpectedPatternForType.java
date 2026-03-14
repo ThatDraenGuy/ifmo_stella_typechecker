@@ -1,13 +1,14 @@
 package ru.draen.stella.typecheck.exceptions;
 
 import ru.draen.stella.generated.StellaParser;
-
-import java.util.List;
+import ru.draen.stella.typecheck.StellaType;
 
 public class ErrorUnexpectedPatternForType extends TypeCheckException {
-    private final StellaParser.MatchCaseContext matchCase;
+    private final StellaParser.PatternContext pattern;
+    private final StellaType type;
 
-    public ErrorUnexpectedPatternForType(StellaParser.MatchCaseContext matchCase) {
-        this.matchCase = matchCase;
+    public ErrorUnexpectedPatternForType(StellaParser.PatternContext pattern, StellaType type) {
+        this.pattern = pattern;
+        this.type = type;
     }
 }

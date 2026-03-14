@@ -49,6 +49,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     }
 
     @Override
+    public StellaType visitTerminatingSemicolon(StellaParser.TerminatingSemicolonContext ctx) {
+        return ctx.expr_.accept(this);
+    }
+
+    @Override
     public StellaType visitVar(StellaParser.VarContext ctx) {
         return returnChecked(registry.getVar(ctx.name.getText())
                         .orElseThrow(() -> new ErrorUndefinedVariable(ctx)),
@@ -411,71 +416,34 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitMatch(StellaParser.MatchContext ctx) {
-        //TODO rework this whole thing
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.expr_.accept(this);
-        Map<String, StellaType> variants = switch (type) {
-            case StellaType.Sum sum -> Map.of(
-                    StellaType.Sum.INL, sum.inl(),
-                    StellaType.Sum.INR, sum.inr()
-            );
-            case StellaType.Variant variant -> variant.items().entrySet().stream().collect(Collectors.toMap(
-                    Map.Entry::getKey,
-                    entry -> entry.getValue().type()
-            ));
-            default -> Map.of();
-        };
 
         if (ctx.cases.isEmpty()) {
             throw new ErrorIllegalEmptyMatching(ctx);
         }
-        Map<String, StellaParser.MatchCaseContext> cases = ctx.cases.stream().collect(Collectors.toMap(
-                matchCase -> switch (matchCase.pattern()) {
-                    case StellaParser.PatternInlContext inl -> StellaType.Sum.INL;
-                    case StellaParser.PatternInrContext inr -> StellaType.Sum.INR;
-                    case StellaParser.PatternVariantContext variant -> variant.label.getText();
-                    default -> throw new IllegalStateException("Unexpected value: " + matchCase.pattern());
-                },
-                Function.identity()
-        ));
 
-        List<String> missingPatterns = new ArrayList<>();
-        for (String label : variants.keySet()) {
-            if (!cases.containsKey(label)) {
-                missingPatterns.add(label);
-            }
-        }
-        if (!missingPatterns.isEmpty()) {
-            throw new ErrorNonexhaustiveMatchPatterns(ctx, missingPatterns);
-        }
-
-        for (String label : cases.keySet()) {
-            if (!variants.containsKey(label)) {
-                throw new ErrorUnexpectedPatternForType(cases.get(label));
-            }
-        }
-
-        List<StellaType> exprTypes = cases.keySet().stream().map(label -> {
-            StellaParser.MatchCaseContext matchCase = cases.get(label);
-            StellaType variantType = variants.get(label);
-            Map<String, StellaType> vars = resolveMatchVars(matchCase.pattern_, variantType);
+        List<StellaPattern> notExhausted = type.allPossiblePatterns();
+        for (StellaParser.MatchCaseContext matchCase : ctx.cases) {
+            var result = new StellaPatternResolver(matchCase.pattern_, type).resolve(notExhausted);
+            notExhausted = result.notExhausted();
             registry.enterScope(matchCase.getText());
-            for (var var : vars.entrySet()) {
+            for (var var : result.vars().entrySet()) {
                 registry.addVar(var.getKey(), var.getValue());
             }
             maybeExpected.ifPresent(registry::addExpectedType);
-            StellaType result = matchCase.expr_.accept(this);
+            StellaType exprType = matchCase.expr_.accept(this);
+            if (maybeExpected.isEmpty()) {
+                maybeExpected = Optional.of(exprType);
+            }
             registry.exitScope();
-            return result;
-        }).toList();
-
-        StellaType expected = maybeExpected.orElse(exprTypes.getFirst());
-        for (StellaType exprType : exprTypes) {
-            checkTypeMismatch(expected, exprType, null); //TODO
+        }
+        if (!notExhausted.isEmpty() && !notExhausted.getFirst().matches(new StellaPattern.NoPattern())) {
+            throw new ErrorNonexhaustiveMatchPatterns(ctx, notExhausted);
         }
 
         maybeExpected.ifPresent(registry::addExpectedType);
-        return returnChecked(expected, ctx);
+        return returnChecked(maybeExpected.get(), ctx);
     }
 
     //endregion
