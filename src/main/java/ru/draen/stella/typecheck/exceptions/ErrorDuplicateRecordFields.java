@@ -10,4 +10,9 @@ public class ErrorDuplicateRecordFields extends TypeCheckException {
         this.record = record;
         this.field = field;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(record) + "Поле \"" + field + "\" объявлено больше одного раза";
+    }
 }

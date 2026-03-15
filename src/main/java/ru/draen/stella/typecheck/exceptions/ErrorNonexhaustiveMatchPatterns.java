@@ -4,6 +4,8 @@ import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaPattern;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class ErrorNonexhaustiveMatchPatterns extends TypeCheckException {
     private final StellaParser.MatchContext match;
@@ -15,7 +17,9 @@ public class ErrorNonexhaustiveMatchPatterns extends TypeCheckException {
     }
 
     @Override
-    public String getMessage() {
-        return missingPatterns.toString();
+    public String report() {
+        return reportSource(match) + "Match-выражение не покрывает все возможные паттерны. Число непокрытых паттернов: "
+                + missingPatterns.size() + "\nСписок непокрытых паттернов: \n"
+                + missingPatterns.stream().map(Objects::toString).collect(Collectors.joining("\n"));
     }
 }

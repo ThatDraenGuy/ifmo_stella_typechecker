@@ -12,4 +12,9 @@ public class ErrorUnexpectedVariant extends TypeCheckException {
         this.variant = variant;
         this.expected = expected;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(variant) + "Ожидаемый тип выражения не является вариантом;\nОжидаемый тип выражения: " + expected;
+    }
 }

@@ -1,5 +1,10 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 public enum ErrorType {
     ERROR_MISSING_MAIN(1, ErrorMissingMain.class),
     ERROR_UNDEFINED_VARIABLE(2, ErrorUndefinedVariable.class),
@@ -35,13 +40,18 @@ public enum ErrorType {
 
     ERROR_INCORRECT_NUMBER_OF_ARGUMENTS(-1, ErrorIncorrectNumberOfArguments.class, true),
     ERROR_INCORRECT_ARITY_OF_MAIN(-1, ErrorIncorrectArityOfMain.class, true),
-    ERROR_NON_EXHAUSTIVE_MATCH_PATTERNS(-1, ErrorNonexhaustiveMatchPatterns.class, true),
     ERROR_DUPLICATE_RECORD_PATTERN_FIELDS(-1, ErrorDuplicateRecordPatternFields.class, true)
     ;
 
     private final int number;
     private final boolean isExtra;
     private final Class<? extends TypeCheckException> errorClass;
+
+    private final static Map<Class<? extends TypeCheckException>, ErrorType> byExceptionClass = Arrays.stream(ErrorType.values())
+            .collect(Collectors.toMap(
+                    errorType -> errorType.errorClass,
+                    Function.identity()
+    ));
 
     ErrorType(int number, Class<? extends TypeCheckException> errorClass) {
         this.number = number;
@@ -65,5 +75,9 @@ public enum ErrorType {
 
     public boolean isExtra() {
         return isExtra;
+    }
+
+    public static ErrorType getByException(Class<? extends TypeCheckException> e) {
+        return byExceptionClass.get(e);
     }
 }

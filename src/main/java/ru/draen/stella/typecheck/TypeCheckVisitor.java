@@ -4,7 +4,6 @@ import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.generated.StellaParserBaseVisitor;
 import ru.draen.stella.typecheck.exceptions.*;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -93,14 +92,14 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             }
 
             if (ctx.paramDecls.size() != expectedFunc.in().size()) {
-                throw new ErrorUnexpectedNumberOfParametersInLambda(ctx, expected);
+                throw new ErrorUnexpectedNumberOfParametersInLambda(ctx, expectedFunc.in().size(), ctx.paramDecls.size(), expected);
             }
 
             IntStream.range(0, ctx.paramDecls.size()).forEach(i -> {
                 StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
                 StellaType paramType = StellaType.fromAst(paramDecl.paramType);
                 if (!paramType.matches(expectedFunc.in().get(i))) {
-                    throw new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i));
+                    throw new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType);
                 }
             });
 
@@ -125,11 +124,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.fun.accept(this);
         if (!(type instanceof StellaType.Func(List<StellaType> inTypes, StellaType outType))) {
-            throw new ErrorNotAFunction(ctx.fun);
+            throw new ErrorNotAFunction(ctx.fun, type);
         }
 
         if (ctx.args.size() != inTypes.size()) {
-            throw new ErrorIncorrectNumberOfArguments(ctx);
+            throw new ErrorIncorrectNumberOfArguments(ctx, inTypes.size(), ctx.args.size());
         }
 
         IntStream.range(0, inTypes.size()).forEach(i -> {
@@ -253,7 +252,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             }
 
             if (ctx.exprs.size() != expectedTuple.items().size()) {
-                throw new ErrorUnexpectedTupleLength(ctx, expected);
+                throw new ErrorUnexpectedTupleLength(ctx, expectedTuple.items().size(), ctx.exprs.size(), expected);
             }
             return expectedTuple;
         });
@@ -271,11 +270,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.expr_.accept(this);
         if (!(type instanceof StellaType.Tuple(List<StellaType> itemTypes))) {
-            throw new ErrorNotATuple(ctx.expr_);
+            throw new ErrorNotATuple(ctx.expr_, type);
         }
         int index = Integer.parseInt(ctx.index.getText());
         if (index > itemTypes.size()) {
-            throw new ErrorTupleIndexOutOfBounds(ctx.expr_, index);
+            throw new ErrorTupleIndexOutOfBounds(ctx.expr_, itemTypes.size(), index);
         }
 
         maybeExpected.ifPresent(registry::addExpectedType);
@@ -331,11 +330,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.expr_.accept(this);
         if (!(type instanceof StellaType.Record(Map<String, StellaType.Record.Item> items))) {
-            throw new ErrorNotARecord(ctx.expr_);
+            throw new ErrorNotARecord(ctx.expr_, type);
         }
         String label = ctx.label.getText();
         StellaType result = Optional.ofNullable( items.get(label))
-                .orElseThrow(() -> new ErrorUnexpectedFieldAccess(ctx.expr_, label))
+                .orElseThrow(() -> new ErrorUnexpectedFieldAccess(ctx.expr_, label, type))
                 .type();
 
         maybeExpected.ifPresent(registry::addExpectedType);
@@ -475,7 +474,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.list.accept(this);
         if (!(type instanceof StellaType.StellaList(StellaType itemType))) {
-            throw new ErrorNotAList(ctx.list);
+            throw new ErrorNotAList(ctx.list, type);
         }
 
         maybeExpected.ifPresent(registry::addExpectedType);
@@ -487,7 +486,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.list.accept(this);
         if (!(type instanceof StellaType.StellaList(StellaType itemType))) {
-            throw new ErrorNotAList(ctx.list);
+            throw new ErrorNotAList(ctx.list, type);
         }
 
         maybeExpected.ifPresent(registry::addExpectedType);
@@ -499,7 +498,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.list.accept(this);
         if (!(type instanceof StellaType.StellaList)) {
-            throw new ErrorNotAList(ctx.list);
+            throw new ErrorNotAList(ctx.list, type);
         }
 
         maybeExpected.ifPresent(registry::addExpectedType);
@@ -526,11 +525,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         maybeExpected.ifPresent(type -> registry.addExpectedType(new StellaType.Func(List.of(type), type)));
         StellaType innerType = ctx.expr_.accept(this);
         if (!(innerType instanceof StellaType.Func(List<StellaType> inTypes, StellaType outType))) {
-            throw new ErrorNotAFunction(ctx.expr_);
+            throw new ErrorNotAFunction(ctx.expr_, innerType);
         }
 
         if (inTypes.size() != 1) {
-            throw new ErrorIncorrectNumberOfArguments(ctx);
+            throw new ErrorIncorrectNumberOfArguments(ctx, 1, inTypes.size());
         }
 
         if (!inTypes.getFirst().matches(outType)) {

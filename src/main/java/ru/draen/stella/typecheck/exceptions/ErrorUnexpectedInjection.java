@@ -21,4 +21,12 @@ public class ErrorUnexpectedInjection extends TypeCheckException {
         record Inl(StellaParser.InlContext inl) implements InjectionContext {}
         record Inr(StellaParser.InrContext inr) implements InjectionContext {}
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(switch (injection) {
+            case InjectionContext.Inl inl -> inl.inl;
+            case InjectionContext.Inr inr -> inr.inr;
+        }) + "Ожидаемый тип выражения не является типом-суммой;\nОжидаемый тип выражения: " + expected;
+    }
 }

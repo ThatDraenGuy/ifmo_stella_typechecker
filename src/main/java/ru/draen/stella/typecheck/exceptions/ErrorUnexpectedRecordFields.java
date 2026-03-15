@@ -13,4 +13,10 @@ public class ErrorUnexpectedRecordFields extends TypeCheckException {
         this.expected = expected;
         this.fieldName = fieldName;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(record) + "Ожидаемый тип выражения не содержит поле с именем \"" + fieldName
+                + "\";\nОжидаемый тип выражения: " + expected;
+    }
 }

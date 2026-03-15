@@ -22,4 +22,12 @@ public class ErrorUnexpectedList extends TypeCheckException {
         record List(StellaParser.ListContext list) implements ListContext {}
         record Cons(StellaParser.ConsListContext cons) implements ListContext {}
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(switch (list) {
+            case ListContext.List list1 -> list1.list;
+            case ListContext.Cons cons -> cons.cons;
+        }) + "Ожидаемый тип выражения не является списком;\nОжидаемый тип выражения: " + expected;
+    }
 }

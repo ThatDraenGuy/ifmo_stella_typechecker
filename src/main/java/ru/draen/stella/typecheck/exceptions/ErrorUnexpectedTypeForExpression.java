@@ -13,4 +13,11 @@ public class ErrorUnexpectedTypeForExpression extends TypeCheckException {
         this.expected = expected;
         this.actual = actual;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(expr) + "Тип выражения не совпадает с ожидаемым;"
+                + "\nОжидаемый тип выражения: " + expected
+                + "\nВыведенный тип выражения: " + actual;
+    }
 }

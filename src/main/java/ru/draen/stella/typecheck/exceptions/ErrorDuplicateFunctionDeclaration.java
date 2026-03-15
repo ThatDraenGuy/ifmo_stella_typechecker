@@ -8,4 +8,9 @@ public class ErrorDuplicateFunctionDeclaration extends TypeCheckException {
     public ErrorDuplicateFunctionDeclaration(StellaParser.DeclFunContext func) {
         this.func = func;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(func) + "Функция с данным именем уже была объявлена";
+    }
 }

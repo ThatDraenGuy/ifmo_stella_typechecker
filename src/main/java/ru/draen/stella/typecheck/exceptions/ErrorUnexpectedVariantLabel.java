@@ -14,4 +14,10 @@ public class ErrorUnexpectedVariantLabel extends TypeCheckException {
         this.expected = expected;
         this.label = label;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(variant) + "Ожидаемый тип выражения не содержит тэг с именем \"" + label
+                + "\";\nОжидаемый тип выражения: " + expected;
+    }
 }

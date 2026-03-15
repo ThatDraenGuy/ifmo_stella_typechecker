@@ -13,4 +13,10 @@ public class ErrorMissingRecordFields extends TypeCheckException {
         this.expected = expected;
         this.fieldName = fieldName;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(record) + "В записи отсутствует необходимое поле \"" + fieldName
+                + "\";\nОжидаемый тип записи: " + expected;
+    }
 }

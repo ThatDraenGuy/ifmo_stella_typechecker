@@ -11,4 +11,9 @@ public class ErrorUnexpectedTuple extends TypeCheckException {
         this.tuple = tuple;
         this.expected = expected;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(tuple) + "Ожидаемый тип выражения не является кортежом;\nОжидаемый тип выражения: " + expected;
+    }
 }

@@ -11,4 +11,9 @@ public class ErrorUnexpectedLambda extends TypeCheckException {
         this.lambda = lambda;
         this.expected = expected;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(lambda) + "Ожидаемый тип выражения не является функцией;\nОжидаемый тип выражения: " + expected;
+    }
 }

@@ -10,4 +10,9 @@ public class ErrorDuplicateVariantTypeFields extends TypeCheckException {
         this.variant = variant;
         this.field = field;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(variant) + "Тэг \"" + field + "\" объявлен больше одного раза";
+    }
 }

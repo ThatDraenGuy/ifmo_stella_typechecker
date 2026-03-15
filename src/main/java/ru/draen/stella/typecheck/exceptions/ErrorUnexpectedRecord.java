@@ -11,4 +11,9 @@ public class ErrorUnexpectedRecord extends TypeCheckException {
         this.record = record;
         this.expected = expected;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(record) + "Ожидаемый тип выражения не является записью;\nОжидаемый тип выражения: " + expected;
+    }
 }

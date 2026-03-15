@@ -8,4 +8,9 @@ public class ErrorAmbiguousVariantType extends TypeCheckException {
     public ErrorAmbiguousVariantType(StellaParser.VariantContext variant) {
         this.variant = variant;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(variant) + "Не удалось определить полный тип типа-варианта";
+    }
 }

@@ -13,7 +13,7 @@ public class ErrorUnexpectedPatternForType extends TypeCheckException {
     }
 
     @Override
-    public String getMessage() {
-        return pattern.getText() + " for " + type;
+    protected String reportText() {
+        return reportSource(pattern) + "Паттерн не соответствует типу разбираемого выражения;\nВыведенный тип выражения: " + type;
     }
 }

@@ -1,7 +1,9 @@
 package ru.draen.stella.typecheck.exceptions;
 
 
-import ru.draen.stella.generated.StellaParser;
-
 public class ErrorIncorrectArityOfMain extends TypeCheckException {
+    @Override
+    protected String reportText() {
+        return "main-функция должна принимать ровно один аргумент";
+    }
 }

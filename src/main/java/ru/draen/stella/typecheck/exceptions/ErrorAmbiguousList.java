@@ -9,4 +9,9 @@ public class ErrorAmbiguousList extends TypeCheckException {
     public ErrorAmbiguousList(StellaParser.ListContext list) {
         this.list = list;
     }
+
+    @Override
+    protected String reportText() {
+        return reportSource(list) + "Не удалось определить тип списка";
+    }
 }

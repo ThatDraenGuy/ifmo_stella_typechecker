@@ -10,7 +10,7 @@ public class ErrorUndefinedVariable extends TypeCheckException {
     }
 
     @Override
-    public String getMessage() {
-        return var.getText();
+    protected String reportText() {
+        return reportSource(var) + "Переменная с именем " + var.name.getText() + " не объявлена";
     }
 }
