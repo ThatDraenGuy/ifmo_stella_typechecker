@@ -23,7 +23,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     private void checkTypeMismatch(StellaType expected, StellaType actual, StellaParser.ExprContext expr) {
         if (!expected.matches(actual)) {
-            throw new ErrorUnexpectedTypeForExpression(expr, expected);
+            throw new ErrorUnexpectedTypeForExpression(expr, expected, actual);
         }
     }
 
@@ -37,8 +37,13 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     @Override
     public StellaType visitProgram(StellaParser.ProgramContext ctx) {
         StellaType res = visitChildren(ctx);
-        if (registry.getVar(MAIN_FUNC_NAME).isEmpty()) {
+        StellaType mainFunc = registry.getVar(MAIN_FUNC_NAME).orElseThrow(ErrorMissingMain::new);
+        if (!(mainFunc instanceof StellaType.Func(List<StellaType> in, StellaType out))) {
             throw new ErrorMissingMain();
+        }
+
+        if (in.size() != 1) {
+            throw new ErrorIncorrectArityOfMain();
         }
         return res;
     }
@@ -72,6 +77,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
             registry.addVar(paramDecl.name.getText(), StellaType.fromAst(paramDecl.paramType));
         }
+        ctx.localDecls.forEach(decl -> decl.accept(this));
         registry.addExpectedType(funcType.out());
         ctx.returnExpr.accept(this);
         registry.exitScope();
@@ -422,7 +428,6 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //endregion
 
     //region list
-
     @Override
     public StellaType visitConsList(StellaParser.ConsListContext ctx) {
         Optional<StellaType.StellaList> maybeExpectedList = registry.consumeExpectedType().map(expected -> {
@@ -511,6 +516,32 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         ctx.expr_.accept(this);
 
         return ascription;
+    }
+    //endregion
+
+    //region fix
+    @Override
+    public StellaType visitFix(StellaParser.FixContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        maybeExpected.ifPresent(type -> registry.addExpectedType(new StellaType.Func(List.of(type), type)));
+        StellaType innerType = ctx.expr_.accept(this);
+        if (!(innerType instanceof StellaType.Func(List<StellaType> inTypes, StellaType outType))) {
+            throw new ErrorNotAFunction(ctx.expr_);
+        }
+
+        if (inTypes.size() != 1) {
+            throw new ErrorIncorrectNumberOfArguments(ctx);
+        }
+
+        if (!inTypes.getFirst().matches(outType)) {
+            throw new ErrorUnexpectedTypeForExpression(ctx.expr_,
+                    new StellaType.Func(inTypes, inTypes.getFirst()),
+                    new StellaType.Func(inTypes, outType)
+            );
+        }
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return returnChecked(outType, ctx);
     }
     //endregion
 

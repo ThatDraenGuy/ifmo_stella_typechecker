@@ -11,4 +11,9 @@ public class ErrorUnexpectedPatternForType extends TypeCheckException {
         this.pattern = pattern;
         this.type = type;
     }
+
+    @Override
+    public String getMessage() {
+        return pattern.getText() + " for " + type;
+    }
 }

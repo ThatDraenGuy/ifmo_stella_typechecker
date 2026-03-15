@@ -30,15 +30,29 @@ public enum ErrorType {
     ERROR_DUPLICATE_RECORD_FIELDS(27, ErrorDuplicateRecordFields.class),
     ERROR_DUPLICATE_RECORD_TYPE_FIELDS(28, ErrorDuplicateRecordTypeFields.class),
     ERROR_DUPLICATE_VARIANT_TYPE_FIELDS(29, ErrorDuplicateVariantTypeFields.class),
-    ERROR_DUPLICATE_FUNCTION_DECLARATION(30, ErrorDuplicateFunctionDeclaration.class)
+    ERROR_DUPLICATE_FUNCTION_DECLARATION(30, ErrorDuplicateFunctionDeclaration.class),
+    //extra
+
+    ERROR_INCORRECT_NUMBER_OF_ARGUMENTS(-1, ErrorIncorrectNumberOfArguments.class, true),
+    ERROR_INCORRECT_ARITY_OF_MAIN(-1, ErrorIncorrectArityOfMain.class, true),
+    ERROR_NON_EXHAUSTIVE_MATCH_PATTERNS(-1, ErrorNonexhaustiveMatchPatterns.class, true),
+    ERROR_DUPLICATE_RECORD_PATTERN_FIELDS(-1, ErrorDuplicateRecordPatternFields.class, true)
     ;
 
     private final int number;
+    private final boolean isExtra;
     private final Class<? extends TypeCheckException> errorClass;
 
     ErrorType(int number, Class<? extends TypeCheckException> errorClass) {
         this.number = number;
         this.errorClass = errorClass;
+        this.isExtra = false;
+    }
+
+    ErrorType(int number, Class<? extends TypeCheckException> errorClass, boolean isExtra) {
+        this.number = number;
+        this.errorClass = errorClass;
+        this.isExtra = isExtra;
     }
 
     public int getNumber() {
@@ -47,5 +61,9 @@ public enum ErrorType {
 
     public Class<? extends TypeCheckException> getErrorClass() {
         return errorClass;
+    }
+
+    public boolean isExtra() {
+        return isExtra;
     }
 }

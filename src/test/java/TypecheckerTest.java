@@ -32,10 +32,44 @@ public class TypecheckerTest {
     private static Stream<IllTypedFile> illTyped() throws IOException, URISyntaxException {
         URI uri = Objects.requireNonNull(TypecheckerTest.class.getResource("test_suite/stage1/ill-typed")).toURI();
         Path illTypedPath = Paths.get(uri);
-        return Arrays.stream(ErrorType.values()).flatMap(errorType -> {
-            Path errorTypePath = illTypedPath.resolve(errorType.name().toLowerCase().replace("error_", ""));
+        return Arrays.stream(ErrorType.values())
+                .filter(errorType -> !errorType.isExtra())
+                .flatMap(errorType -> {
+                    Path errorTypePath = illTypedPath.resolve(errorType.name().toLowerCase().replace("error_", ""));
+                    try {
+                        return Files.list(errorTypePath).map(file -> new IllTypedFile(errorType, file));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+    }
+
+    private static Stream<Path> extraWellTyped() throws IOException, URISyntaxException {
+        URI uri = Objects.requireNonNull(TypecheckerTest.class.getResource("test_suite/stage1/extra/")).toURI();
+        Path extraPath = Paths.get(uri);
+        return Files.walk(extraPath, 1).filter(Files::isDirectory).skip(1).flatMap(extraDir -> {
             try {
-                return Files.list(errorTypePath).map(file -> new IllTypedFile(errorType, file));
+                return Files.list(extraDir.resolve("well-typed"));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    private static Stream<IllTypedFile> extraIllTyped() throws IOException, URISyntaxException {
+        URI uri = Objects.requireNonNull(TypecheckerTest.class.getResource("test_suite/stage1/extra/")).toURI();
+        Path extraPath = Paths.get(uri);
+        return Files.walk(extraPath, 1).filter(Files::isDirectory).skip(1).flatMap(extraDir -> {
+            try {
+                return Files.walk(extraDir.resolve("ill-typed"), 1).filter(Files::isDirectory).skip(1).flatMap(errorTypePath -> {
+                    String error = errorTypePath.getFileName().toString();
+                    ErrorType errorType = ErrorType.valueOf("ERROR_" + error.toUpperCase());
+                    try {
+                        return Files.list(errorTypePath).map(file -> new IllTypedFile(errorType, file));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -50,8 +84,22 @@ public class TypecheckerTest {
     }
 
     @ParameterizedTest
+    @MethodSource("extraWellTyped")
+    public void extraWellTyped(Path filePath) throws IOException {
+        CharStream src = CharStreams.fromPath(filePath);
+        assertDoesNotThrow(() -> typeChecker.checkTypes(src));
+    }
+
+    @ParameterizedTest
     @MethodSource("illTyped")
     public void illTyped(IllTypedFile illTyped) throws IOException {
+        CharStream src = CharStreams.fromPath(illTyped.file);
+        assertThrows(illTyped.errorType.getErrorClass(), () -> typeChecker.checkTypes(src));
+    }
+
+    @ParameterizedTest
+    @MethodSource("extraIllTyped")
+    public void extraIllTyped(IllTypedFile illTyped) throws IOException {
         CharStream src = CharStreams.fromPath(illTyped.file);
         assertThrows(illTyped.errorType.getErrorClass(), () -> typeChecker.checkTypes(src));
     }
@@ -63,47 +111,31 @@ public class TypecheckerTest {
     public void temp() {
         CharStream src = CharStreams.fromString(
                 """
-language core;
-extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
-extend with #records, #lists, #unit-type, #variants;
-
-fn main(input : [Nat]) -> Nat {
-  return
-    match input {
-      [] => 0
-      |[n] => 0
-      |cons(n, cons(succ(m), rest)) => 0
-      |cons(0, cons(0, rest)) => 0
-      |cons(succ(n), cons(0, rest)) => 0
-   }
-}
 //language core;
 //extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
 //extend with #records, #lists, #unit-type, #variants;
 //
-//fn main(input : Nat) -> Nat {
+//fn main(input : [Nat]) -> Nat {
 //  return
 //    match input {
-//      0 => 0
-//      | succ(succ(succ(succ(succ(succ(n)))))) => 0
-//      | 3 => 0
-//      | 1 => 0
-//      | 4 => 0
-//      | 2 => 0
-//      | 5 => 0
-//      | 7 => 0              //7
-//      | 6 => 0
-//      | succ(succ(succ(0))) => 0  //3
-//      | succ(0) => 0        //1
-//      | 9 => 0
-//      | 8 => 0
-//      | 10 => 0
-//      | succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(succ(n))))))))))) => 0  //11
-//      
-//      
-////      | succ(succ(succ(succ(n)))) => n
+//      [] => 0
+//      |[n] => 0
+//      |cons(n, cons(succ(m), rest)) => 0
+//      |cons(0, cons(0, rest)) => 0
+//      |cons(succ(n), cons(0, rest)) => 0
 //   }
 //}
+
+language core;
+extend with #structural-patterns;
+
+fn main(n : Nat) -> Nat {
+  return match n {
+    succ(succ(succ(0))) => 0
+    | 7 => 0
+  }
+}
+
                         """
         );
         assertDoesNotThrow(() -> typeChecker.checkTypes(src));
