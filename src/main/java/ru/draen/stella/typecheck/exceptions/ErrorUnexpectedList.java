@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
@@ -24,10 +25,15 @@ public class ErrorUnexpectedList extends TypeCheckException {
     }
 
     @Override
-    protected String reportText() {
-        return reportSource(switch (list) {
+    protected ParserRuleContext getSource() {
+        return switch (list) {
             case ListContext.List list1 -> list1.list;
             case ListContext.Cons cons -> cons.cons;
-        }) + "Ожидаемый тип выражения не является списком;\nОжидаемый тип выражения: " + expected;
+        };
+    }
+
+    @Override
+    protected String reportText() {
+        return "Ожидаемый тип выражения не является списком;\nОжидаемый тип выражения: " + expected;
     }
 }

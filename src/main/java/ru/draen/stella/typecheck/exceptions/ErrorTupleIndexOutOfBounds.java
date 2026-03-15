@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 
 public class ErrorTupleIndexOutOfBounds extends TypeCheckException {
@@ -14,8 +15,13 @@ public class ErrorTupleIndexOutOfBounds extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return expr;
+    }
+
+    @Override
     protected String reportText() {
-        return reportSource(expr) + "Кортеж содержит " + itemCount
+        return "Кортеж содержит " + itemCount
                 + " компонент(ов), но обращение происходит к компоненту по индексу " + index;
     }
 }

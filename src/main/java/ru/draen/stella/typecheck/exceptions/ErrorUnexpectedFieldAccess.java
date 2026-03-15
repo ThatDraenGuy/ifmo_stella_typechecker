@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
@@ -15,7 +16,12 @@ public class ErrorUnexpectedFieldAccess extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return expr;
+    }
+
+    @Override
     protected String reportText() {
-        return reportSource(expr) + "Поле с именем \"" + label + "\" отсутствует в записи;\nВыведенный тип записи: " + type;
+        return "Поле с именем \"" + label + "\" отсутствует в записи;\nВыведенный тип записи: " + type;
     }
 }

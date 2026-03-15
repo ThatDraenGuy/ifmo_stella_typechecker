@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
@@ -23,10 +24,15 @@ public class ErrorUnexpectedInjection extends TypeCheckException {
     }
 
     @Override
-    protected String reportText() {
-        return reportSource(switch (injection) {
+    protected ParserRuleContext getSource() {
+        return switch (injection) {
             case InjectionContext.Inl inl -> inl.inl;
             case InjectionContext.Inr inr -> inr.inr;
-        }) + "Ожидаемый тип выражения не является типом-суммой;\nОжидаемый тип выражения: " + expected;
+        };
+    }
+
+    @Override
+    protected String reportText() {
+        return "Ожидаемый тип выражения не является типом-суммой;\nОжидаемый тип выражения: " + expected;
     }
 }

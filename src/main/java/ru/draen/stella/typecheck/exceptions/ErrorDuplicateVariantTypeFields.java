@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 
 public class ErrorDuplicateVariantTypeFields extends TypeCheckException {
@@ -12,7 +13,12 @@ public class ErrorDuplicateVariantTypeFields extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return variant;
+    }
+
+    @Override
     protected String reportText() {
-        return reportSource(variant) + "Тэг \"" + field + "\" объявлен больше одного раза";
+        return "Тэг \"" + field + "\" объявлен больше одного раза";
     }
 }

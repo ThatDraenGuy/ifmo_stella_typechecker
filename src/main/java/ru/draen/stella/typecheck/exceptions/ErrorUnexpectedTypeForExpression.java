@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
@@ -15,8 +16,13 @@ public class ErrorUnexpectedTypeForExpression extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return expr;
+    }
+
+    @Override
     protected String reportText() {
-        return reportSource(expr) + "Тип выражения не совпадает с ожидаемым;"
+        return "Тип выражения не совпадает с ожидаемым;"
                 + "\nОжидаемый тип выражения: " + expected
                 + "\nВыведенный тип выражения: " + actual;
     }

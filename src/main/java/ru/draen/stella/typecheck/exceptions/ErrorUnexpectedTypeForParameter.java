@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
@@ -15,8 +16,13 @@ public class ErrorUnexpectedTypeForParameter extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return param;
+    }
+
+    @Override
     protected String reportText() {
-        return reportSource(param) + "Тип параметра не совпадает с ожидаемым;"
+        return "Тип параметра не совпадает с ожидаемым;"
                 + "\nОжидаемый тип параметра: " + expected
                 + "\nВыведенный тип параметра: " + actual;
     }

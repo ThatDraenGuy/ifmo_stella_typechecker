@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 
 public class ErrorIncorrectNumberOfArguments extends TypeCheckException {
@@ -25,15 +26,21 @@ public class ErrorIncorrectNumberOfArguments extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return switch (appl) {
+            case ArgumentContext.Appl appl1 -> appl1.appl;
+            case ArgumentContext.Fix fix -> fix.fix;
+        };
+    }
+
+    @Override
     protected String reportText() {
         return switch (appl) {
-            case ArgumentContext.Appl appl1 -> reportSource(appl1.appl)
-                    + "Число аргументов в вызове функции некорректно;\n"
-                    + "ожидаемое число аргументов:  " + expected
-                    + "переданное число аргументов: " + actual;
-            case ArgumentContext.Fix fix -> reportSource(fix.fix)
-                    + "Функция в fix-выражении должна принимать ровно 1 аргумент;\n"
-                    + "переданное число аргументов: " + actual;
+            case ArgumentContext.Appl ignored -> "Число аргументов в вызове функции некорректно;\n"
+                    + "Ожидаемое число аргументов:  " + expected
+                    + "Переданное число аргументов: " + actual;
+            case ArgumentContext.Fix ignored -> "Функция в fix-выражении должна принимать ровно 1 аргумент;\n"
+                    + "Переданное число аргументов: " + actual;
         };
     }
 }

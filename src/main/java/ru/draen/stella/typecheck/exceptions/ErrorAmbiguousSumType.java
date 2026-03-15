@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 
 public class ErrorAmbiguousSumType extends TypeCheckException {
@@ -19,10 +20,15 @@ public class ErrorAmbiguousSumType extends TypeCheckException {
     }
 
     @Override
-    protected String reportText() {
-        return reportSource(switch (injection) {
+    protected ParserRuleContext getSource() {
+        return switch (injection) {
             case InjectionContext.Inl inl -> inl.inl;
             case InjectionContext.Inr inr -> inr.inr;
-        }) + "Не удалось определить полный тип типа-суммы";
+        };
+    }
+
+    @Override
+    protected String reportText() {
+        return "Не удалось определить полный тип типа-суммы";
     }
 }

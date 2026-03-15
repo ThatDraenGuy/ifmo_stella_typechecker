@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
@@ -16,10 +17,14 @@ public class ErrorUnexpectedNumberOfParametersInLambda extends TypeCheckExceptio
         this.type = type;
     }
 
+    @Override
+    protected ParserRuleContext getSource() {
+        return lambda;
+    }
 
     @Override
     protected String reportText() {
-        return reportSource(lambda) + "Число аргументов в ожидаемом типе выражения не равно заданному;"
+        return "Число аргументов в ожидаемом типе выражения не равно заданному;"
                 + "\nОжидаемое число аргументов: " + expected
                 + "\nЗаданное число аргументов: " + actual
                 + "\nОжидаемый тип выражения: " + type;

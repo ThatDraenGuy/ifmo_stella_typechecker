@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
@@ -15,8 +16,13 @@ public class ErrorUnexpectedRecordFields extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return record;
+    }
+
+    @Override
     protected String reportText() {
-        return reportSource(record) + "Ожидаемый тип выражения не содержит поле с именем \"" + fieldName
+        return "Ожидаемый тип выражения не содержит поле с именем \"" + fieldName
                 + "\";\nОжидаемый тип выражения: " + expected;
     }
 }

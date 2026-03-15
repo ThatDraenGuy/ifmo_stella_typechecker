@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 
 public class ErrorDuplicateFunctionDeclaration extends TypeCheckException {
@@ -10,7 +11,12 @@ public class ErrorDuplicateFunctionDeclaration extends TypeCheckException {
     }
 
     @Override
+    protected ParserRuleContext getSource() {
+        return func;
+    }
+
+    @Override
     protected String reportText() {
-        return reportSource(func) + "Функция с данным именем уже была объявлена";
+        return "Функция с данным именем уже была объявлена";
     }
 }

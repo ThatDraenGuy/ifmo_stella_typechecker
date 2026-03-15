@@ -1,5 +1,6 @@
 package ru.draen.stella.typecheck.exceptions;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaPattern;
 
@@ -17,8 +18,13 @@ public class ErrorNonexhaustiveMatchPatterns extends TypeCheckException {
     }
 
     @Override
-    public String report() {
-        return reportSource(match) + "Match-выражение не покрывает все возможные паттерны. Число непокрытых паттернов: "
+    protected ParserRuleContext getSource() {
+        return match;
+    }
+
+    @Override
+    public String reportText() {
+        return "Match-выражение не покрывает все возможные паттерны. Число непокрытых паттернов: "
                 + missingPatterns.size() + "\nСписок непокрытых паттернов: \n"
                 + missingPatterns.stream().map(Objects::toString).collect(Collectors.joining("\n"));
     }
