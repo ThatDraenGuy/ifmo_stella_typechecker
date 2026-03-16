@@ -44,6 +44,10 @@ public enum ErrorType {
     ERROR_NONEXHAUSTIVE_LET_PATTERNS(-1, ErrorNonexhaustiveLetPatterns.class, true),
     ERROR_NONEXHAUSTIVE_LET_REC_PATTERNS(-1, ErrorNonexhaustiveLetRecPatterns.class, true),
     ERROR_AMBIGUOUS_PATTERN_TYPE(-1, ErrorAmbiguousPatternType.class, true),
+    ERROR_MISSING_DATA_FOR_LABEL(-1, ErrorMissingDataForLabel.class, true),
+    ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL(-1, ErrorUnexpectedDataForNullaryLabel.class, true),
+    ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN(-1, ErrorUnexpectedNonNullaryVariantPattern.class, true),
+    ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN(-1, ErrorUnexpectedNullaryVariantPattern.class, true),
     ;
 
     private final int number;

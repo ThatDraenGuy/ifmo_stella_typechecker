@@ -23,7 +23,7 @@
 2. ✅ Расширение `#nested-function-declarations`
 3. ✅ Расширения `#nullary-functions` и `#multiparameter-functions`
 4. ✅ Расширение `#structural-patterns`
-5. ❌ Расширение `#nullary-variant-labels`
+5. ✅ Расширение `#nullary-variant-labels`
 6. ✅ Расширение `#letrec-bindings` и `#pattern-ascriptions`
 7. ❌ Дополнительные коды ошибок
     - `ERROR_DUPLICATE_FUNCTION_PARAMETER`
@@ -34,5 +34,5 @@
 ## Запуск тайпчекера
 Простейший способ - `make run`. Собирает docker-образ при его отсутствии и запускает его в интерактивном режиме.
 
-"Натуральным" для баша образом можно подставить файлв качестве stdin для тайпчекера:
+"Натуральным" для баша образом можно подставить файл в качестве stdin для тайпчекера:
 `make run < samples/ill-typed.stella`

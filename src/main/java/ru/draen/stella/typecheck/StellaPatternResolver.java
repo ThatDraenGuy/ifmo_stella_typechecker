@@ -3,6 +3,8 @@ package ru.draen.stella.typecheck;
 import ru.draen.stella.Utils;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordPatternFields;
+import ru.draen.stella.typecheck.exceptions.ErrorUnexpectedNonNullaryVariantPattern;
+import ru.draen.stella.typecheck.exceptions.ErrorUnexpectedNullaryVariantPattern;
 import ru.draen.stella.typecheck.exceptions.ErrorUnexpectedPatternForType;
 
 import java.util.*;
@@ -25,7 +27,8 @@ public class StellaPatternResolver {
 
     public Result resolve(List<StellaPattern> current) {
         if (current.isEmpty()) {
-            current = List.of(new StellaPattern.NoPattern());
+            checkPatternType(pattern, type);
+            return new Result(vars, current, type);
         }
         List<StellaPattern> notExhausted = actualExhaust(pattern, type, current).toList();
         return new Result(vars, notExhausted, type);
@@ -33,6 +36,123 @@ public class StellaPatternResolver {
 
     private<T> Stream<T> exhaust(T value, boolean condition) {
         return condition ? Stream.empty() : Stream.of(value);
+    }
+
+    private void checkPatternType(StellaParser.PatternContext pattern, StellaType type) {
+        if (pattern instanceof StellaParser.PatternVarContext var) {
+            vars.put(var.name.getText(), type);
+            return;
+        }
+
+        if (pattern instanceof StellaParser.PatternAscContext asc) {
+            if (!type.matches(StellaType.fromAst(asc.type_))) {
+                throw new ErrorUnexpectedPatternForType(pattern, type);
+            }
+            checkPatternType(asc.pattern_, type);
+            return;
+        }
+
+        switch (type) {
+            case StellaType.Bool bool -> {
+                switch (pattern) {
+                    case StellaParser.PatternFalseContext ignored -> {}
+                    case StellaParser.PatternTrueContext ignored -> {}
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                };
+            }
+            case StellaType.Func func -> {
+                throw new ErrorUnexpectedPatternForType(pattern, type);
+            }
+            case StellaType.Nat nat -> {
+                switch (pattern) {
+                    case StellaParser.PatternIntContext ignored -> {}
+                    case StellaParser.PatternSuccContext succ -> checkPatternType(succ.pattern_, nat);
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
+            }
+            case StellaType.Tuple tupleType -> {
+                switch (pattern) {
+                    case StellaParser.PatternTupleContext tupleCtx -> {
+                        if (tupleCtx.patterns.size() != tupleType.items().size()) throw new ErrorUnexpectedPatternForType(pattern, type);
+                        IntStream.range(0, tupleType.items().size()).forEach(i ->
+                                checkPatternType(tupleCtx.patterns.get(i), tupleType.items().get(i)));
+                    }
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
+            }
+            case StellaType.Record recordType -> {
+                switch (pattern) {
+                    case StellaParser.PatternRecordContext recordCtx -> {
+                        Map<String, StellaParser.LabelledPatternContext> patterns = recordCtx.patterns.stream().collect(Collectors.toMap(
+                                patt -> patt.label.getText(),
+                                patt -> {
+                                    StellaType innerType = Optional.ofNullable(recordType.items().get(patt.label.getText()))
+                                            .orElseThrow(() -> new ErrorUnexpectedPatternForType(pattern, type)).type();
+                                    checkPatternType(patt.pattern_, innerType);
+                                    return patt;
+                                },
+                                (patt1, patt2) -> {
+                                    throw new ErrorDuplicateRecordPatternFields(recordCtx, patt1.label.getText());
+                                }
+                        ));
+                        for (String name : recordType.items().keySet()) {
+                            // только паттерны со всеми полями
+                            if (!patterns.containsKey(name)) throw new ErrorUnexpectedPatternForType(pattern, type);
+                        }
+                    }
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
+            }
+
+            case StellaType.Sum sumType -> {
+                switch (pattern) {
+                    case StellaParser.PatternInlContext inl -> {
+                        checkPatternType(inl.pattern_, sumType.inl());
+                    }
+                    case StellaParser.PatternInrContext inr -> {
+                        checkPatternType(inr.pattern_, sumType.inr());
+                    }
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
+            }
+            case StellaType.Variant variantType -> {
+                switch (pattern) {
+                    case StellaParser.PatternVariantContext variantCtx -> {
+                        String name = variantCtx.label.getText();
+                        Optional<StellaType> innerType = Optional.ofNullable(variantType.items().get(name))
+                                .orElseThrow(() -> new ErrorUnexpectedPatternForType(pattern, type))
+                                .type();
+
+                        if (innerType.isEmpty() && variantCtx.pattern_ != null) {
+                            throw new ErrorUnexpectedNonNullaryVariantPattern(variantCtx, variantType, name);
+                        }
+                        if (innerType.isPresent() && variantCtx.pattern_ == null) {
+                            throw new ErrorUnexpectedNullaryVariantPattern(variantCtx, variantType, name);
+                        }
+                        innerType.ifPresent(stellaType -> checkPatternType(variantCtx.pattern_, stellaType));
+                    }
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
+            }
+            case StellaType.StellaList listType -> {
+                switch (pattern) {
+                    case StellaParser.PatternConsContext consCtx -> {
+                        checkPatternType(consCtx.head, listType.itemType());
+                        checkPatternType(consCtx.tail, listType);
+                    }
+                    case StellaParser.PatternListContext listCtx -> {
+                        listCtx.patterns.forEach(patt -> checkPatternType(patt, listType.itemType()));
+                    }
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
+            }
+            case StellaType.Unit unitType -> {
+                switch (pattern) {
+                    case StellaParser.PatternUnitContext ignored -> {}
+                    default -> throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
+            }
+        };
     }
 
     private Stream<StellaPattern> resolveExhaust(StellaParser.PatternContext pattern, StellaType type, StellaPattern possible) {
@@ -230,14 +350,26 @@ public class StellaPatternResolver {
                         yield Stream.of(possible);
                     }
 
-                    StellaType innerType = Optional.ofNullable(variantType.items().get(name))
-                            .orElseThrow(() -> new ErrorUnexpectedPatternForType(pattern, type))
-                             .type();
                     if (!name.equals(variantCtx.label.getText())) {
                         yield Stream.of(possible);
                     }
-                    Stream<StellaPattern> remaining = actualExhaust(variantCtx.pattern_, innerType, inner);
-                    yield remaining.map(newInner -> new StellaPattern.VariantPattern(name, newInner));
+
+                    Optional<StellaType> innerType = Optional.ofNullable(variantType.items().get(name))
+                            .orElseThrow(() -> new ErrorUnexpectedPatternForType(pattern, type))
+                             .type();
+
+                    if (innerType.isEmpty() && variantCtx.pattern_ != null) {
+                        throw new ErrorUnexpectedNonNullaryVariantPattern(variantCtx, variantType, name);
+                    }
+                    if (innerType.isPresent() && variantCtx.pattern_ == null) {
+                        throw new ErrorUnexpectedNullaryVariantPattern(variantCtx, variantType, name);
+                    }
+
+                    if (variantCtx.pattern_ != null) {
+                        Stream<StellaPattern> remaining = actualExhaust(variantCtx.pattern_, innerType.get(), inner);
+                        yield remaining.map(newInner -> new StellaPattern.VariantPattern(name, newInner));
+                    }
+                    yield Stream.empty();
                 }
                 default -> throw new ErrorUnexpectedPatternForType(pattern, type);
             };

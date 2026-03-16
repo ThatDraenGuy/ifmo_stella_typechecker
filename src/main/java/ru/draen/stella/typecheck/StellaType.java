@@ -9,6 +9,7 @@ import ru.draen.stella.typecheck.exceptions.UnsupportedException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -175,15 +176,15 @@ public sealed interface StellaType {
     record Variant(Map<String, Item> items) implements StellaType {
         @Override
         public String toString() {
-            return "<|" + items.entrySet().stream()
-                    .map(entry -> entry.getKey() + " : " + entry.getValue())
+            return "<|" + items.values().stream()
+                    .map(Objects::toString)
                     .collect(Collectors.joining(", ")) + "|>";
         }
 
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Variant(Map<String, Item> items2)
-                    && mapMatches(items, items2, Item::type);
+                    && mapMatchesWithOptionals(items, items2, Item::type);
         }
 
         @Override
@@ -192,7 +193,12 @@ public sealed interface StellaType {
                     .toList();
         }
 
-        record Item(String name, StellaType type) {}
+        record Item(String name, Optional<StellaType> type) {
+            @Override
+            public String toString() {
+                return name + type.map(stellaType -> " : " + stellaType).orElse("");
+            }
+        }
     }
     record StellaList(StellaType itemType) implements StellaType {
         @Override
@@ -242,7 +248,8 @@ public sealed interface StellaType {
             case StellaParser.TypeVariantContext variant -> new Variant(
                     variant.fieldTypes.stream().collect(Collectors.toMap(
                             fieldType -> fieldType.label.getText(),
-                            fieldType -> new Variant.Item(fieldType.label.getText(), StellaType.fromAst(fieldType.type_)),
+                            fieldType -> new Variant.Item(fieldType.label.getText(),
+                                    Optional.ofNullable(fieldType.type_).map(StellaType::fromAst)),
                             (fieldType1, fieldType2) -> {
                                 throw new ErrorDuplicateVariantTypeFields(variant, fieldType1.name());
                             }
@@ -264,5 +271,14 @@ public sealed interface StellaType {
         return fst.keySet().equals(snd.keySet()) && fst.keySet().stream()
                 .allMatch(name ->
                         typeGetter.apply(fst.get(name)).matches(typeGetter.apply(snd.get(name))));
+    }
+
+    static <T>boolean mapMatchesWithOptionals(Map<String, T> fst, Map<String, T> snd, Function<T, Optional<StellaType>> typeGetter) {
+        return fst.keySet().equals(snd.keySet()) && fst.keySet().stream()
+                .allMatch(name -> {
+                    Optional<StellaType> first = typeGetter.apply(fst.get(name));
+                    Optional<StellaType> second = typeGetter.apply(snd.get(name));
+                    return first.isPresent() == second.isPresent() && (first.isEmpty() || first.get().matches(second.get()));
+                });
     }
 }

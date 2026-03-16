@@ -398,9 +398,21 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             if (!expectedVariant.items().containsKey(label)) {
                 throw new ErrorUnexpectedVariantLabel(ctx, expectedVariant, label);
             }
-            registry.addExpectedType(expectedVariant.items().get(label).type());
+            Optional<StellaType> expectedInner = expectedVariant.items().get(label).type();
+
+            if (expectedInner.isEmpty() && ctx.rhs != null) {
+                throw new ErrorUnexpectedDataForNullaryLabel(ctx, expectedVariant, label);
+            }
+
+            if (expectedInner.isPresent() && ctx.rhs == null) {
+                throw new ErrorMissingDataForLabel(ctx, expectedVariant, label);
+            }
+
+            expectedInner.ifPresent(registry::addExpectedType);
         });
-        ctx.rhs.accept(this);
+        if (ctx.rhs != null) {
+            ctx.rhs.accept(this);
+        }
         return maybeExpectedVariant.orElseThrow(() -> new ErrorAmbiguousVariantType(ctx));
     }
 

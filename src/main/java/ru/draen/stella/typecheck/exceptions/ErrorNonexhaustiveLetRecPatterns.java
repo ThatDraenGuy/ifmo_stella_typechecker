@@ -24,8 +24,7 @@ public class ErrorNonexhaustiveLetRecPatterns extends TypeCheckException {
 
     @Override
     public String reportText() {
-        return "LetRec-паттерн не покрывает все возможные паттерны. Число непокрытых паттернов: "
-                + missingPatterns.size() + "\nСписок непокрытых паттернов: \n"
+        return "LetRec-паттерн не покрывает все возможные паттерны.\nСписок непокрытых паттернов: \n"
                 + missingPatterns.stream().map(Objects::toString).collect(Collectors.joining("\n"));
     }
 }
