@@ -7,6 +7,7 @@ import java.util.*;
 public class TypeCheckRegistry {
     private final LinkedList<Scope> scopeStack = new LinkedList<>();
     private Optional<StellaType> expectedType = Optional.empty();
+    private boolean isDeclarationPass = false; //костыль для объявления функций (в стелле нету форвард-декларэйшина)
 
     public TypeCheckRegistry() {
         enterScope("GLOBAL");
@@ -41,6 +42,14 @@ public class TypeCheckRegistry {
             if (type != null) return Optional.of(type);
         }
         return Optional.empty();
+    }
+
+    public boolean isDeclarationPass() {
+        return isDeclarationPass;
+    }
+
+    public void setDeclarationPass(boolean declarationPass) {
+        isDeclarationPass = declarationPass;
     }
 
     private record Scope(String marker, Map<String, StellaType> vars) {

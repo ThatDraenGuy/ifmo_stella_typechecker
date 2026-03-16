@@ -1,7 +1,5 @@
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import ru.draen.stella.typecheck.TypeChecker;
@@ -105,43 +103,4 @@ public class TypecheckerTest {
     }
 
     public record IllTypedFile(ErrorType errorType, Path file) {}
-
-    @Test
-    @Disabled
-    public void temp() {
-        CharStream src = CharStreams.fromString(
-                """
-//language core;
-//extend with #structural-patterns, #sum-types, #natural-literals, #tuples;
-//extend with #records, #lists, #unit-type, #variants;
-//
-//fn main(input : [Nat]) -> Nat {
-//  return
-//    match input {
-//      [] => 0
-//      |[n] => 0
-//      |cons(n, cons(succ(m), rest)) => 0
-//      |cons(0, cons(0, rest)) => 0
-//      |cons(succ(n), cons(0, rest)) => 0
-//   }
-//}
-
-language core;
-extend with #structural-patterns;
-
-fn main(n : Nat) -> Nat {
-  return match n {
-    succ(succ(succ(0))) => 0
-    | 7 => 0
-  }
-}
-
-                        """
-        );
-        assertDoesNotThrow(() -> typeChecker.checkTypes(src));
-    }
-    //[succ(0-1), succ(3+)]
-    //1-2, 4+
-    //[succ(0), succ(succ(0)), succ(succ(succ(succ(__something__))))]
-    //1, 2, 4+
 }

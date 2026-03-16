@@ -16,7 +16,7 @@ public class StellaPatternResolver {
     private final StellaParser.PatternContext pattern;
     private final StellaType type;
 
-    public record Result(Map<String, StellaType> vars, List<StellaPattern> notExhausted) {}
+    public record Result(Map<String, StellaType> vars, List<StellaPattern> notExhausted, StellaType type) {}
 
     public StellaPatternResolver(StellaParser.PatternContext pattern, StellaType type) {
         this.pattern = pattern;
@@ -28,7 +28,7 @@ public class StellaPatternResolver {
             current = List.of(new StellaPattern.NoPattern());
         }
         List<StellaPattern> notExhausted = actualExhaust(pattern, type, current).toList();
-        return new Result(vars, notExhausted);
+        return new Result(vars, notExhausted, type);
     }
 
     private<T> Stream<T> exhaust(T value, boolean condition) {
@@ -39,6 +39,13 @@ public class StellaPatternResolver {
         if (pattern instanceof StellaParser.PatternVarContext var) {
             vars.put(var.name.getText(), type);
             return Stream.empty();
+        }
+
+        if (pattern instanceof StellaParser.PatternAscContext asc) {
+            if (!type.matches(StellaType.fromAst(asc.type_))) {
+                throw new ErrorUnexpectedPatternForType(pattern, type);
+            }
+            return resolveExhaust(asc.pattern_, type, possible);
         }
 
         return switch (type) {

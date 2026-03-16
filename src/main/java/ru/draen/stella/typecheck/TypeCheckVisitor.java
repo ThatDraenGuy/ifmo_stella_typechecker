@@ -35,7 +35,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitProgram(StellaParser.ProgramContext ctx) {
+        registry.setDeclarationPass(true);
+        visitChildren(ctx);
+        registry.setDeclarationPass(false);
         StellaType res = visitChildren(ctx);
+
         StellaType mainFunc = registry.getVar(MAIN_FUNC_NAME).orElseThrow(ErrorMissingMain::new);
         if (!(mainFunc instanceof StellaType.Func(List<StellaType> in, StellaType out))) {
             throw new ErrorMissingMain();
@@ -68,15 +72,23 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     @Override
     public StellaType visitDeclFun(StellaParser.DeclFunContext ctx) {
         StellaType.Func funcType = StellaType.Func.fromDeclFun(ctx);
-        if (registry.addVar(ctx.name.getText(), funcType)) {
-            throw new ErrorDuplicateFunctionDeclaration(ctx);
+        if (registry.isDeclarationPass()) {
+            if (registry.addVar(ctx.name.getText(), funcType)) {
+                throw new ErrorDuplicateFunctionDeclaration(ctx);
+            }
+            return funcType;
         }
 
         registry.enterScope(ctx.name.getText());
         for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
             registry.addVar(paramDecl.name.getText(), StellaType.fromAst(paramDecl.paramType));
         }
+
+        registry.setDeclarationPass(true);
         ctx.localDecls.forEach(decl -> decl.accept(this));
+        registry.setDeclarationPass(false);
+        ctx.localDecls.forEach(decl -> decl.accept(this));
+
         registry.addExpectedType(funcType.out());
         ctx.returnExpr.accept(this);
         registry.exitScope();
@@ -545,20 +557,19 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //endregion
 
     //region let
-     private Map<String, StellaType> resolveLetVars(StellaParser.PatternContext pattern, StellaType type) {
-        return switch (pattern) {
-            case StellaParser.PatternVarContext var -> Map.of(var.name.getText(), type);
-            default -> throw new IllegalStateException("Unexpected value: " + pattern);
-        };
-     }
-
     @Override
     public StellaType visitLet(StellaParser.LetContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType exprType = ctx.patternBinding.rhs.accept(this);
-        Map<String, StellaType> vars = resolveLetVars(ctx.patternBinding.pat, exprType);
+
+        StellaPatternResolver.Result patResult = new StellaPatternResolver(ctx.patternBinding.pat, exprType)
+                .resolve(exprType.allPossiblePatterns());
+        if (!patResult.notExhausted().isEmpty()) {
+            throw new ErrorNonexhaustiveLetPatterns(ctx, patResult.notExhausted());
+        }
+
         registry.enterScope(ctx.getText());
-        for (var var : vars.entrySet()) {
+        for (var var : patResult.vars().entrySet()) {
             registry.addVar(var.getKey(), var.getValue());
         }
 
@@ -567,5 +578,94 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         registry.exitScope();
         return returnChecked(result, ctx);
     }
+
+    private StellaType resolvePatternType(StellaParser.PatternContext ctx) {
+        return switch (ctx) {
+            case StellaParser.PatternVarContext var -> throw new ErrorAmbiguousPatternType(var);
+            case StellaParser.PatternAscContext asc -> StellaType.fromAst(asc.type_);
+            case StellaParser.PatternSuccContext ignored -> new StellaType.Nat();
+            case StellaParser.PatternIntContext ignored -> new StellaType.Nat();
+            case StellaParser.PatternFalseContext ignored -> new StellaType.Bool();
+            case StellaParser.PatternTrueContext ignored -> new StellaType.Bool();
+            case StellaParser.PatternUnitContext ignored -> new StellaType.Unit();
+            case StellaParser.PatternTupleContext tuple -> {
+                List<StellaType> innerTypes = tuple.patterns.stream().map(this::resolvePatternType).toList();
+                yield new StellaType.Tuple(innerTypes);
+            }
+            case StellaParser.PatternRecordContext record -> {
+                Map<String, StellaType.Record.Item> fields = record.patterns.stream()
+                        .map(pat ->
+                                new StellaType.Record.Item(pat.label.getText(),
+                                        resolvePatternType(pat.pattern_)))
+                        .collect(Collectors.toMap(
+                                StellaType.Record.Item::name,
+                                Function.identity(),
+                                (item, item2) -> {
+                                    throw new ErrorDuplicateRecordPatternFields(record, item.name());
+                                }
+                        ));
+                yield new StellaType.Record(fields);
+            }
+            case StellaParser.PatternInlContext inl -> {
+                resolvePatternType(inl.pattern_);
+                throw new ErrorAmbiguousPatternType(inl);
+            }
+            case StellaParser.PatternInrContext inr -> {
+                resolvePatternType(inr.pattern_);
+                throw new ErrorAmbiguousPatternType(inr);
+            }
+            case StellaParser.PatternVariantContext variant -> {
+                resolvePatternType(variant.pattern_);
+                throw new ErrorAmbiguousPatternType(variant);
+            }
+            case StellaParser.PatternConsContext cons -> {
+                StellaType head = resolvePatternType(cons.head);
+                StellaType headList = new StellaType.StellaList(head);
+                StellaType tail = resolvePatternType(cons.tail);
+                if (!tail.matches(headList)) {
+                    throw new ErrorUnexpectedPatternForType(cons.tail, headList);
+                }
+                yield headList;
+            }
+            case StellaParser.PatternListContext list -> {
+                if (list.patterns.isEmpty()) throw new ErrorAmbiguousPatternType(list);
+                StellaType first = resolvePatternType(list.patterns.getFirst());
+                for (int i = 1; i < list.patterns.size(); i++) {
+                    StellaParser.PatternContext pattern = list.patterns.get(i);
+                    if (!resolvePatternType(pattern).matches(first)) {
+                        throw new ErrorUnexpectedPatternForType(pattern, first);
+                    }
+                }
+                yield new StellaType.StellaList(first);
+            }
+            default -> throw new UnsupportedException();
+        };
+    }
+
+    @Override
+    public StellaType visitLetRec(StellaParser.LetRecContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        StellaType patternType = resolvePatternType(ctx.patternBinding.pat);
+
+        StellaPatternResolver.Result patResult = new StellaPatternResolver(ctx.patternBinding.pat, patternType)
+                .resolve(patternType.allPossiblePatterns());
+        if (!patResult.notExhausted().isEmpty()) {
+            throw new ErrorNonexhaustiveLetRecPatterns(ctx, patResult.notExhausted());
+        }
+
+        registry.enterScope(ctx.getText());
+        for (var var : patResult.vars().entrySet()) {
+            registry.addVar(var.getKey(), var.getValue());
+        }
+
+        registry.addExpectedType(patternType);
+        ctx.patternBinding.rhs.accept(this);
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        StellaType result = ctx.body.accept(this);
+        registry.exitScope();
+        return returnChecked(result, ctx);
+    }
+
     //endregion
 }
