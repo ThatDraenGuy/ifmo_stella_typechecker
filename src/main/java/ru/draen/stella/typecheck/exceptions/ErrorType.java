@@ -40,6 +40,7 @@ public enum ErrorType {
 
     ERROR_INCORRECT_NUMBER_OF_ARGUMENTS(-1, ErrorIncorrectNumberOfArguments.class, true),
     ERROR_INCORRECT_ARITY_OF_MAIN(-1, ErrorIncorrectArityOfMain.class, true),
+    ERROR_UNEXPECTED_NUMBER_OF_PARAMETERS_IN_LAMBDA(-1, ErrorUnexpectedNumberOfParametersInLambda.class, true),
     ERROR_DUPLICATE_RECORD_PATTERN_FIELDS(-1, ErrorDuplicateRecordPatternFields.class, true),
     ERROR_NONEXHAUSTIVE_LET_PATTERNS(-1, ErrorNonexhaustiveLetPatterns.class, true),
     ERROR_NONEXHAUSTIVE_LET_REC_PATTERNS(-1, ErrorNonexhaustiveLetRecPatterns.class, true),
@@ -48,6 +49,9 @@ public enum ErrorType {
     ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL(-1, ErrorUnexpectedDataForNullaryLabel.class, true),
     ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN(-1, ErrorUnexpectedNonNullaryVariantPattern.class, true),
     ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN(-1, ErrorUnexpectedNullaryVariantPattern.class, true),
+    ERROR_DUPLICATE_LET_BINDING(-1, ErrorDuplicateLetBinding.class, true),
+    ERROR_DUPLICATE_FUNCTION_PARAMETER(-1, ErrorDuplicateFunctionParameter.class, true),
+    ERROR_DUPLICATE_PATTERN_VARIABLE(-1, ErrorDuplicatePatternVariable.class, true)
     ;
 
     private final int number;

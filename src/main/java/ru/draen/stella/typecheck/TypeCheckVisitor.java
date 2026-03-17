@@ -79,25 +79,30 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             return funcType;
         }
 
-        registry.enterScope(ctx.name.getText());
-        for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
-            registry.addVar(paramDecl.name.getText(), StellaType.fromAst(paramDecl.paramType));
+        try {
+            registry.enterScope(ctx.name.getText());
+            for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
+                if (registry.addVar(paramDecl.name.getText(), StellaType.fromAst(paramDecl.paramType))) {
+                    throw new ErrorDuplicateFunctionParameter(ctx, paramDecl.name.getText());
+                }
+            }
+
+            registry.setDeclarationPass(true);
+            ctx.localDecls.forEach(decl -> decl.accept(this));
+            registry.setDeclarationPass(false);
+            ctx.localDecls.forEach(decl -> decl.accept(this));
+
+            registry.addExpectedType(funcType.out());
+            ctx.returnExpr.accept(this);
+        } finally {
+            registry.exitScope();
         }
 
-        registry.setDeclarationPass(true);
-        ctx.localDecls.forEach(decl -> decl.accept(this));
-        registry.setDeclarationPass(false);
-        ctx.localDecls.forEach(decl -> decl.accept(this));
-
-        registry.addExpectedType(funcType.out());
-        ctx.returnExpr.accept(this);
-        registry.exitScope();
         return funcType;
     }
 
     @Override
     public StellaType visitAbstraction(StellaParser.AbstractionContext ctx) {
-        registry.enterScope(ctx.getText());
         Optional<StellaType.Func> maybeExpectedFunc = registry.consumeExpectedType().map(expected -> {
             if (!(expected instanceof StellaType.Func expectedFunc)) {
                 throw new ErrorUnexpectedLambda(ctx, expected);
@@ -118,14 +123,21 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             return expectedFunc;
         });
 
-        for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
-            StellaType paramType = StellaType.fromAst(paramDecl.paramType);
-            registry.addVar(paramDecl.name.getText(), paramType);
-        }
+        StellaType returnType;
+        try {
+            registry.enterScope(ctx.getText());
+            for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
+                StellaType paramType = StellaType.fromAst(paramDecl.paramType);
+                if (registry.addVar(paramDecl.name.getText(), paramType)) {
+                    throw new ErrorDuplicateFunctionParameter(ctx, paramDecl.name.getText());
+                }
+            }
 
-        maybeExpectedFunc.ifPresent(expectedFunc -> registry.addExpectedType(expectedFunc.out()));
-        StellaType returnType = ctx.returnExpr.accept(this);
-        registry.exitScope();
+            maybeExpectedFunc.ifPresent(expectedFunc -> registry.addExpectedType(expectedFunc.out()));
+            returnType = ctx.returnExpr.accept(this);
+        } finally {
+            registry.exitScope();
+        }
 
         maybeExpectedFunc.ifPresent(registry::addExpectedType);
         return returnChecked(StellaType.Func.fromAbstraction(ctx, returnType), ctx);
@@ -429,16 +441,19 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         for (StellaParser.MatchCaseContext matchCase : ctx.cases) {
             var result = new StellaPatternResolver(matchCase.pattern_, type).resolve(notExhausted);
             notExhausted = result.notExhausted();
-            registry.enterScope(matchCase.getText());
-            for (var var : result.vars().entrySet()) {
-                registry.addVar(var.getKey(), var.getValue());
+            try {
+                registry.enterScope(matchCase.getText());
+                for (var var : result.vars().entrySet()) {
+                    registry.addVar(var.getKey(), var.getValue());
+                }
+                maybeExpected.ifPresent(registry::addExpectedType);
+                StellaType exprType = matchCase.expr_.accept(this);
+                if (maybeExpected.isEmpty()) {
+                    maybeExpected = Optional.of(exprType);
+                }
+            } finally {
+                registry.exitScope();
             }
-            maybeExpected.ifPresent(registry::addExpectedType);
-            StellaType exprType = matchCase.expr_.accept(this);
-            if (maybeExpected.isEmpty()) {
-                maybeExpected = Optional.of(exprType);
-            }
-            registry.exitScope();
         }
         if (!notExhausted.isEmpty() && !notExhausted.getFirst().matches(new StellaPattern.NoPattern())) {
             throw new ErrorNonexhaustiveMatchPatterns(ctx, notExhausted);
@@ -574,20 +589,31 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType exprType = ctx.patternBinding.rhs.accept(this);
 
-        StellaPatternResolver.Result patResult = new StellaPatternResolver(ctx.patternBinding.pat, exprType)
-                .resolve(exprType.allPossiblePatterns());
+        StellaPatternResolver.Result patResult;
+        try {
+            patResult = new StellaPatternResolver(ctx.patternBinding.pat, exprType)
+                    .resolve(exprType.allPossiblePatterns());
+        } catch (ErrorDuplicatePatternVariable e) {
+            throw new ErrorDuplicateLetBinding(ctx, e.getVariable());
+        }
+
         if (!patResult.notExhausted().isEmpty()) {
             throw new ErrorNonexhaustiveLetPatterns(ctx, patResult.notExhausted());
         }
 
-        registry.enterScope(ctx.getText());
-        for (var var : patResult.vars().entrySet()) {
-            registry.addVar(var.getKey(), var.getValue());
+        StellaType result;
+        try {
+            registry.enterScope(ctx.getText());
+            for (var var : patResult.vars().entrySet()) {
+                registry.addVar(var.getKey(), var.getValue());
+            }
+
+            maybeExpected.ifPresent(registry::addExpectedType);
+            result = ctx.body.accept(this);
+        } finally {
+            registry.exitScope();
         }
 
-        maybeExpected.ifPresent(registry::addExpectedType);
-        StellaType result = ctx.body.accept(this);
-        registry.exitScope();
         return returnChecked(result, ctx);
     }
 
@@ -659,23 +685,33 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType patternType = resolvePatternType(ctx.patternBinding.pat);
 
-        StellaPatternResolver.Result patResult = new StellaPatternResolver(ctx.patternBinding.pat, patternType)
-                .resolve(patternType.allPossiblePatterns());
+        StellaPatternResolver.Result patResult;
+        try {
+            patResult = new StellaPatternResolver(ctx.patternBinding.pat, patternType)
+                    .resolve(patternType.allPossiblePatterns());
+        } catch (ErrorDuplicatePatternVariable e) {
+            throw new ErrorDuplicateLetBinding(ctx, e.getVariable());
+        }
         if (!patResult.notExhausted().isEmpty()) {
             throw new ErrorNonexhaustiveLetRecPatterns(ctx, patResult.notExhausted());
         }
 
-        registry.enterScope(ctx.getText());
-        for (var var : patResult.vars().entrySet()) {
-            registry.addVar(var.getKey(), var.getValue());
+        StellaType result;
+        try {
+            registry.enterScope(ctx.getText());
+            for (var var : patResult.vars().entrySet()) {
+                registry.addVar(var.getKey(), var.getValue());
+            }
+
+            registry.addExpectedType(patternType);
+            ctx.patternBinding.rhs.accept(this);
+
+            maybeExpected.ifPresent(registry::addExpectedType);
+            result = ctx.body.accept(this);
+        } finally {
+            registry.exitScope();
         }
 
-        registry.addExpectedType(patternType);
-        ctx.patternBinding.rhs.accept(this);
-
-        maybeExpected.ifPresent(registry::addExpectedType);
-        StellaType result = ctx.body.accept(this);
-        registry.exitScope();
         return returnChecked(result, ctx);
     }
 

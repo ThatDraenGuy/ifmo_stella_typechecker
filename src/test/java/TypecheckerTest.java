@@ -8,9 +8,7 @@ import ru.draen.stella.typecheck.exceptions.ErrorType;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -48,6 +46,8 @@ public class TypecheckerTest {
         return Files.walk(extraPath, 1).filter(Files::isDirectory).skip(1).flatMap(extraDir -> {
             try {
                 return Files.list(extraDir.resolve("well-typed"));
+            } catch (NoSuchFileException e) {
+              return Stream.empty();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

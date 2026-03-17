@@ -2,10 +2,7 @@ package ru.draen.stella.typecheck;
 
 import ru.draen.stella.Utils;
 import ru.draen.stella.generated.StellaParser;
-import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordPatternFields;
-import ru.draen.stella.typecheck.exceptions.ErrorUnexpectedNonNullaryVariantPattern;
-import ru.draen.stella.typecheck.exceptions.ErrorUnexpectedNullaryVariantPattern;
-import ru.draen.stella.typecheck.exceptions.ErrorUnexpectedPatternForType;
+import ru.draen.stella.typecheck.exceptions.*;
 
 import java.util.*;
 import java.util.function.Function;
@@ -26,8 +23,8 @@ public class StellaPatternResolver {
     }
 
     public Result resolve(List<StellaPattern> current) {
+        checkPatternType(pattern, type);
         if (current.isEmpty()) {
-            checkPatternType(pattern, type);
             return new Result(vars, current, type);
         }
         List<StellaPattern> notExhausted = actualExhaust(pattern, type, current).toList();
@@ -40,7 +37,9 @@ public class StellaPatternResolver {
 
     private void checkPatternType(StellaParser.PatternContext pattern, StellaType type) {
         if (pattern instanceof StellaParser.PatternVarContext var) {
-            vars.put(var.name.getText(), type);
+            if (vars.put(var.name.getText(), type) != null) {
+                throw new ErrorDuplicatePatternVariable(pattern, var.name.getText());
+            }
             return;
         }
 
@@ -85,16 +84,16 @@ public class StellaPatternResolver {
                     case StellaParser.PatternRecordContext recordCtx -> {
                         Map<String, StellaParser.LabelledPatternContext> patterns = recordCtx.patterns.stream().collect(Collectors.toMap(
                                 patt -> patt.label.getText(),
-                                patt -> {
-                                    StellaType innerType = Optional.ofNullable(recordType.items().get(patt.label.getText()))
-                                            .orElseThrow(() -> new ErrorUnexpectedPatternForType(pattern, type)).type();
-                                    checkPatternType(patt.pattern_, innerType);
-                                    return patt;
-                                },
+                                Function.identity(),
                                 (patt1, patt2) -> {
                                     throw new ErrorDuplicateRecordPatternFields(recordCtx, patt1.label.getText());
                                 }
                         ));
+                        patterns.values().forEach(patt -> {
+                            StellaType innerType = Optional.ofNullable(recordType.items().get(patt.label.getText()))
+                                    .orElseThrow(() -> new ErrorUnexpectedPatternForType(pattern, type)).type();
+                            checkPatternType(patt.pattern_, innerType);
+                        });
                         for (String name : recordType.items().keySet()) {
                             // только паттерны со всеми полями
                             if (!patterns.containsKey(name)) throw new ErrorUnexpectedPatternForType(pattern, type);
@@ -157,7 +156,6 @@ public class StellaPatternResolver {
 
     private Stream<StellaPattern> resolveExhaust(StellaParser.PatternContext pattern, StellaType type, StellaPattern possible) {
         if (pattern instanceof StellaParser.PatternVarContext var) {
-            vars.put(var.name.getText(), type);
             return Stream.empty();
         }
 

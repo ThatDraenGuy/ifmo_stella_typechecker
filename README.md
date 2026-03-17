@@ -25,10 +25,16 @@
 4. ✅ Расширение `#structural-patterns`
 5. ✅ Расширение `#nullary-variant-labels`
 6. ✅ Расширение `#letrec-bindings` и `#pattern-ascriptions`
-7. ❌ Дополнительные коды ошибок
-    - `ERROR_DUPLICATE_FUNCTION_PARAMETER`
-    - `ERROR_DUPLICATE_LET_BINDING`
-    - `ERROR_DUPLICATE_TYPE_PARAMETER`
+7. ✅ Дополнительные коды ошибок
+    - ✅ `ERROR_DUPLICATE_FUNCTION_PARAMETER`
+    - ✅ `ERROR_DUPLICATE_LET_BINDING`
+    - ❌ `ERROR_DUPLICATE_TYPE_PARAMETER` - если я правильно понял, то подобную ошибку можно поймать только при поддержке `#universal-types`, что я реализовать не успел)
+
+Данный тайпчекер также поддерживает следующие код ошибок, не указанные в требованиях первого этапа. Коды ошибок взяты на основе эталонной реализации тайпчекера.
+1. `ERROR_NONEXHAUSTIVE_LET_PATTERNS` - может встретиться при обработке let-выражения
+2. `ERROR_NONEXHAUSTIVE_LET_REC_PATTERNS` - может встретиться при обработке letrec-выражения
+3. `ERROR_AMBIGUOUS_PATTERN_TYPE` - может встретиться при обработке letrec-выражения
+4. `ERROR_DUPLICATE_PATTERN_VARIABLE` - может встретиться при обработке паттерна в match-выражении
 
 Сообщения о найденных ошибках представляются в следующем общем формате:
 ```text
@@ -55,3 +61,5 @@ ERROR_NOT_A_FUNCTION:
 `make run < samples/ill-typed.stella`
 
 Также есть команда `make run-rebuilt`. Работает аналогично `make run`, но обязательно пересобирает докер-образ
+
+Можно собрать напрямую без докера простым `mvn package -DskipTests`. Пропустить тесты необходимо, если при клонировании репозитория не были склонирован гит-сабмодуль с тестовыми файлами.
