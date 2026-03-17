@@ -56,7 +56,7 @@ public sealed interface StellaType {
     record Func(List<StellaType> in, StellaType out) implements StellaType {
         @Override
         public String toString() {
-            return "(" + in + ") -> " + out;
+            return "(" + in.stream().map(Objects::toString).collect(Collectors.joining(", ")) + ") -> " + out;
         }
 
         public static Func fromDeclFun(StellaParser.DeclFunContext ctx) {
