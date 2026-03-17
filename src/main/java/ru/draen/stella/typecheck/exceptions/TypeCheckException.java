@@ -15,14 +15,8 @@ public abstract class TypeCheckException extends RuntimeException {
         return "Строка " + at.getLine() + ", Столбец " + at.getCharPositionInLine();
     }
     protected final String reportSource(ParserRuleContext ctx) {
-        int start, end;
-        if (ctx.start.getLine() != ctx.stop.getLine()) {
-            start = ctx.start.getStartIndex() - ctx.start.getCharPositionInLine();
-            end = ctx.stop.getStopIndex();
-        } else {
-            start = ctx.start.getStartIndex();
-            end = ctx.stop.getStopIndex();
-        }
+        int start = ctx.start.getStartIndex();
+        int end = ctx.stop.getStopIndex();
 
         return reportPosition(ctx.start) + " - " + reportPosition(ctx.stop) + "\n"
                 + ctx.start.getInputStream().getText(new Interval(start, end))
