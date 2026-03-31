@@ -773,5 +773,23 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         return ctx.expr2.accept(this);
     }
 
+    @Override
+    public StellaType visitConstMemory(StellaParser.ConstMemoryContext ctx) {
+        return registry.consumeExpectedType().map(expected -> {
+            if (!(expected instanceof StellaType.Ref)) {
+                throw new ErrorUnexpectedMemoryAddress(ctx, expected);
+            }
+            return expected;
+        }).orElseThrow(() -> new ErrorAmbiguousReferenceType(ctx));
+    }
+    //endregion
+
+    //region exceptions
+    @Override
+    public StellaType visitPanic(StellaParser.PanicContext ctx) {
+        return registry.consumeExpectedType().orElseThrow(() -> new ErrorAmbiguousPanicType(ctx));
+    }
+
+
     //endregion
 }

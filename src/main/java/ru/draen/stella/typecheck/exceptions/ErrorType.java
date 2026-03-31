@@ -6,6 +6,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public enum ErrorType {
+    //stage1
     ERROR_MISSING_MAIN(1, ErrorMissingMain.class),
     ERROR_UNDEFINED_VARIABLE(2, ErrorUndefinedVariable.class),
     ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION(3, ErrorUnexpectedTypeForExpression.class),
@@ -36,10 +37,8 @@ public enum ErrorType {
     ERROR_DUPLICATE_RECORD_TYPE_FIELDS(28, ErrorDuplicateRecordTypeFields.class),
     ERROR_DUPLICATE_VARIANT_TYPE_FIELDS(29, ErrorDuplicateVariantTypeFields.class),
     ERROR_DUPLICATE_FUNCTION_DECLARATION(30, ErrorDuplicateFunctionDeclaration.class),
-    ERROR_NOT_A_REFERENCE(35, ErrorNotAReference.class),
-    ERROR_UNEXPECTED_REFERENCE(37, ErrorUnexpectedReference.class),
-    //extra
 
+    //extra
     ERROR_INCORRECT_NUMBER_OF_ARGUMENTS(-1, ErrorIncorrectNumberOfArguments.class, true),
     ERROR_INCORRECT_ARITY_OF_MAIN(-1, ErrorIncorrectArityOfMain.class, true),
     ERROR_UNEXPECTED_NUMBER_OF_PARAMETERS_IN_LAMBDA(-1, ErrorUnexpectedNumberOfParametersInLambda.class, true),
@@ -53,7 +52,14 @@ public enum ErrorType {
     ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN(-1, ErrorUnexpectedNullaryVariantPattern.class, true),
     ERROR_DUPLICATE_LET_BINDING(-1, ErrorDuplicateLetBinding.class, true),
     ERROR_DUPLICATE_FUNCTION_PARAMETER(-1, ErrorDuplicateFunctionParameter.class, true),
-    ERROR_DUPLICATE_PATTERN_VARIABLE(-1, ErrorDuplicatePatternVariable.class, true)
+    ERROR_DUPLICATE_PATTERN_VARIABLE(-1, ErrorDuplicatePatternVariable.class, true),
+
+    //stage2
+    ERROR_AMBIGUOUS_REFERENCE_TYPE(33, ErrorAmbiguousReferenceType.class),
+    ERROR_AMBIGUOUS_PANIC_TYPE(34, ErrorAmbiguousPanicType.class),
+    ERROR_NOT_A_REFERENCE(35, ErrorNotAReference.class),
+    ERROR_UNEXPECTED_MEMORY_ADDRESS(36, ErrorUnexpectedMemoryAddress.class),
+    ERROR_UNEXPECTED_REFERENCE(37, ErrorUnexpectedReference.class)
     ;
 
     private final int number;
