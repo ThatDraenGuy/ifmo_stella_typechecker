@@ -716,4 +716,62 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     }
 
     //endregion
+
+    //region refs
+
+    @Override
+    public StellaType visitRef(StellaParser.RefContext ctx) {
+        Optional<StellaType.Ref> maybeExpectedRef = registry.consumeExpectedType().map(expected -> {
+            if (!(expected instanceof StellaType.Ref expectedRef)) {
+                throw new ErrorUnexpectedReference(ctx, expected);
+            }
+            return expectedRef;
+        });
+
+        maybeExpectedRef.ifPresent(expectedRef -> registry.addExpectedType(expectedRef.inner()));
+        StellaType inner = ctx.expr_.accept(this);
+
+        maybeExpectedRef.ifPresent(registry::addExpectedType);
+        return returnChecked(new StellaType.Ref(inner), ctx);
+    }
+
+    @Override
+    public StellaType visitDeref(StellaParser.DerefContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        StellaType type = ctx.expr_.accept(this);
+        if (!(type instanceof StellaType.Ref(StellaType inner))) {
+            throw new ErrorNotAReference(ctx.expr_, type);
+        }
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return returnChecked(inner, ctx);
+    }
+
+    @Override
+    public StellaType visitAssign(StellaParser.AssignContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        StellaType targetType = ctx.lhs.accept(this);
+        if (!(targetType instanceof StellaType.Ref(StellaType valueType))) {
+            throw new ErrorNotAReference(ctx.lhs, targetType);
+        }
+
+        registry.addExpectedType(valueType);
+        ctx.rhs.accept(this);
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return returnChecked(new StellaType.Unit(), ctx);
+    }
+
+    @Override
+    public StellaType visitSequence(StellaParser.SequenceContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+
+        registry.addExpectedType(new StellaType.Unit());
+        ctx.expr1.accept(this);
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return ctx.expr2.accept(this);
+    }
+
+    //endregion
 }

@@ -220,6 +220,23 @@ public sealed interface StellaType {
         }
     }
 
+    record Ref(StellaType inner) implements StellaType {
+        @Override
+        public String toString() {
+            return "&" + inner;
+        }
+
+        @Override
+        public boolean matches(StellaType other) {
+            return other instanceof Ref(StellaType inner1) && inner.matches(inner1);
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
+    }
+
     static StellaType fromAst(StellaParser.StellatypeContext ctx) {
         return switch (ctx) {
             case StellaParser.TypeParensContext ctx2 -> fromAst(ctx2.type_);
@@ -256,6 +273,7 @@ public sealed interface StellaType {
                     ))
             );
             case StellaParser.TypeListContext list -> new StellaList(StellaType.fromAst(list.type_));
+            case StellaParser.TypeRefContext ref -> new Ref(StellaType.fromAst(ref.type_));
             default -> throw new UnsupportedException();
         };
     }

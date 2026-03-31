@@ -36,6 +36,8 @@ public enum ErrorType {
     ERROR_DUPLICATE_RECORD_TYPE_FIELDS(28, ErrorDuplicateRecordTypeFields.class),
     ERROR_DUPLICATE_VARIANT_TYPE_FIELDS(29, ErrorDuplicateVariantTypeFields.class),
     ERROR_DUPLICATE_FUNCTION_DECLARATION(30, ErrorDuplicateFunctionDeclaration.class),
+    ERROR_NOT_A_REFERENCE(35, ErrorNotAReference.class),
+    ERROR_UNEXPECTED_REFERENCE(37, ErrorUnexpectedReference.class),
     //extra
 
     ERROR_INCORRECT_NUMBER_OF_ARGUMENTS(-1, ErrorIncorrectNumberOfArguments.class, true),
