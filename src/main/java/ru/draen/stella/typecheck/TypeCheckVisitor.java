@@ -8,11 +8,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     private static final String MAIN_FUNC_NAME = "main";
+    private static final String SUBTYPING_EXT = "#structural-subtyping";
+    private static final String AMBIGUOUS_BOT_EXT = "#ambiguous-type-as-bottom";
 
     private final TypeCheckRegistry registry;
 
@@ -20,9 +23,26 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         this.registry = registry;
     }
 
+    private void checkTypeMismatch(StellaType expected, StellaType actual, Supplier<TypeCheckException> error) {
+        if (registry.isSubtypingEnabled()) {
+            if (!actual.isSubtypeOf(expected)) {
+                throw error.get();
+            }
+        } else {
+            if (!expected.matches(actual)) {
+                throw error.get();
+            }
+        }
+    }
     private void checkTypeMismatch(StellaType expected, StellaType actual, StellaParser.ExprContext expr) {
-        if (!expected.matches(actual)) {
-            throw new ErrorUnexpectedTypeForExpression(expr, expected, actual);
+        if (registry.isSubtypingEnabled()) {
+            if (!actual.isSubtypeOf(expected)) {
+                throw new ErrorUnexpectedSubtype(expr, expected, actual);
+            }
+        } else {
+            if (!expected.matches(actual)) {
+                throw new ErrorUnexpectedTypeForExpression(expr, expected, actual);
+            }
         }
     }
 
@@ -33,12 +53,23 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         return result;
     }
 
+    private<T extends StellaType> StellaType resolveAmbiguity(Optional<T> expected, Supplier<TypeCheckException> error) {
+        if (expected.isPresent()) return expected.get();
+        if (registry.isAmbiguousBottomEnabled()) {
+            return new StellaType.Bottom();
+        } else {
+            throw error.get();
+        }
+    }
+
     @Override
     public StellaType visitProgram(StellaParser.ProgramContext ctx) {
+        ctx.extensions.forEach(ext -> ext.accept(this));
+
         registry.setDeclarationPass(true);
-        visitChildren(ctx);
+        ctx.decls.forEach(decl -> decl.accept(this));
         registry.setDeclarationPass(false);
-        StellaType res = visitChildren(ctx);
+        ctx.decls.forEach(decl -> decl.accept(this));
 
         StellaType mainFunc = registry.getVar(MAIN_FUNC_NAME).orElseThrow(ErrorMissingMain::new);
         if (!(mainFunc instanceof StellaType.Func(List<StellaType> in, StellaType out))) {
@@ -48,7 +79,21 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         if (in.size() != 1) {
             throw new ErrorIncorrectArityOfMain();
         }
-        return res;
+        return new StellaType.Bottom();
+    }
+
+    @Override
+    public StellaType visitAnExtension(StellaParser.AnExtensionContext ctx) {
+        for (var ext : ctx.extensionNames) {
+            String name = ext.getText();
+            if (name.equals(SUBTYPING_EXT)) {
+                registry.setSubtypingEnabled(true);
+            }
+            if (name.equals(AMBIGUOUS_BOT_EXT)) {
+                registry.setAmbiguousBottomEnabled(true);
+            }
+        }
+        return new StellaType.Bottom();
     }
 
     @Override
@@ -103,7 +148,9 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitAbstraction(StellaParser.AbstractionContext ctx) {
-        Optional<StellaType.Func> maybeExpectedFunc = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.Func> maybeExpectedFunc = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.Func expectedFunc)) {
                 throw new ErrorUnexpectedLambda(ctx, expected);
             }
@@ -115,12 +162,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             IntStream.range(0, ctx.paramDecls.size()).forEach(i -> {
                 StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
                 StellaType paramType = StellaType.fromAst(paramDecl.paramType);
-                if (!paramType.matches(expectedFunc.in().get(i))) {
-                    throw new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType);
-                }
+                checkTypeMismatch(paramType, expectedFunc.in().get(i),
+                        () -> new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType));
             });
 
-            return expectedFunc;
+            return Optional.of(expectedFunc);
         });
 
         StellaType returnType;
@@ -185,10 +231,8 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         maybeExpected.ifPresent(registry::addExpectedType);
         StellaType trueType = ctx.thenExpr.accept(this);
-        maybeExpected.ifPresent(registry::addExpectedType);
-        StellaType falseType = ctx.elseExpr.accept(this);
-
-        checkTypeMismatch(trueType, falseType, ctx.elseExpr);
+        registry.addExpectedType(trueType);
+        ctx.elseExpr.accept(this);
 
         maybeExpected.ifPresent(registry::addExpectedType);
         return returnChecked(trueType, ctx);
@@ -270,7 +314,9 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region tuple
     @Override
     public StellaType visitTuple(StellaParser.TupleContext ctx) {
-        Optional<StellaType.Tuple> maybeExpectedTuple = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.Tuple> maybeExpectedTuple = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.Tuple expectedTuple)) {
                 throw new ErrorUnexpectedTuple(ctx, expected);
             }
@@ -278,7 +324,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             if (ctx.exprs.size() != expectedTuple.items().size()) {
                 throw new ErrorUnexpectedTupleLength(ctx, expectedTuple.items().size(), ctx.exprs.size(), expected);
             }
-            return expectedTuple;
+            return Optional.of(expectedTuple);
         });
 
         List<StellaType> types = IntStream.range(0, ctx.exprs.size()).mapToObj(i -> {
@@ -286,7 +332,9 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             maybeExpectedTuple.ifPresent(expected -> registry.addExpectedType(expected.items().get(i)));
             return expr.accept(this);
         }).toList();
-        return new StellaType.Tuple(types);
+
+        maybeExpectedTuple.ifPresent(registry::addExpectedType);
+        return returnChecked(new StellaType.Tuple(types), ctx);
     }
 
     @Override
@@ -309,7 +357,9 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region records
     @Override
     public StellaType visitRecord(StellaParser.RecordContext ctx) {
-        Optional<StellaType.Record> maybeExpectedRecord = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.Record> maybeExpectedRecord = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.Record expectedRecord)) {
                 throw new ErrorUnexpectedRecord(ctx, expected);
             }
@@ -326,18 +376,23 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
                     throw new ErrorMissingRecordFields(ctx, expected, expectedField);
                 }
             }
-            for (String actualField : actualFields.keySet()) {
-                if (!expectedRecord.items().containsKey(actualField)) {
-                    throw new ErrorUnexpectedRecordFields(ctx, expected, actualField);
+
+            if (!registry.isSubtypingEnabled()) {
+                for (String actualField : actualFields.keySet()) {
+                    if (!expectedRecord.items().containsKey(actualField)) {
+                        throw new ErrorUnexpectedRecordFields(ctx, expected, actualField);
+                    }
                 }
             }
 
-            return expectedRecord;
+            return Optional.of(expectedRecord);
         });
 
         Map<String, StellaType.Record.Item> items = ctx.bindings.stream().map(binding -> {
-            maybeExpectedRecord.ifPresent(expectedRecord -> registry.addExpectedType(
-                    expectedRecord.items().get(binding.name.getText()).type()));
+            maybeExpectedRecord.flatMap(expectedRecord ->
+                            Optional.ofNullable(expectedRecord.items().get(binding.name.getText())))
+                    .map(StellaType.Record.Item::type)
+                    .ifPresent(registry::addExpectedType);
             return new StellaType.Record.Item(binding.name.getText(), binding.rhs.accept(this));
         }).collect(Collectors.toMap(
                 StellaType.Record.Item::name,
@@ -346,7 +401,9 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
                     throw new ErrorDuplicateRecordFields(ctx, binding1.name());
                 }
         ));
-        return new StellaType.Record(items);
+
+        maybeExpectedRecord.ifPresent(registry::addExpectedType);
+        return returnChecked(new StellaType.Record(items), ctx);
     }
 
     @Override
@@ -369,40 +426,52 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region itemType sum + variant + match
     @Override
     public StellaType visitInl(StellaParser.InlContext ctx) {
-        Optional<StellaType.Sum> maybeExpectedSum = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.Sum> maybeExpectedSum = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.Sum expectedSum)) {
                 throw new ErrorUnexpectedInjection(ctx, expected);
             }
-            return expectedSum;
+            return Optional.of(expectedSum);
         });
 
         maybeExpectedSum.ifPresent(expectedSum -> registry.addExpectedType(expectedSum.inl()));
         ctx.expr_.accept(this);
-        return maybeExpectedSum.orElseThrow(() -> new ErrorAmbiguousSumType(ctx));
+        return resolveAmbiguity(
+                maybeExpectedSum,
+                () -> new ErrorAmbiguousSumType(ctx)
+        );
     }
 
     @Override
     public StellaType visitInr(StellaParser.InrContext ctx) {
-        Optional<StellaType.Sum> maybeExpectedSum = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.Sum> maybeExpectedSum = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.Sum expectedSum)) {
                 throw new ErrorUnexpectedInjection(ctx, expected);
             }
-            return expectedSum;
+            return Optional.of(expectedSum);
         });
 
         maybeExpectedSum.ifPresent(expectedSum -> registry.addExpectedType(expectedSum.inr()));
         ctx.expr_.accept(this);
-        return maybeExpectedSum.orElseThrow(() -> new ErrorAmbiguousSumType(ctx));
+        return resolveAmbiguity(
+                maybeExpectedSum,
+                () -> new ErrorAmbiguousSumType(ctx)
+        );
     }
 
     @Override
     public StellaType visitVariant(StellaParser.VariantContext ctx) {
-        Optional<StellaType.Variant> maybeExpectedVariant = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.Variant> maybeExpectedVariant = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.Variant expectedVariant)) {
                 throw new ErrorUnexpectedVariant(ctx, expected);
             }
 
-            return expectedVariant;
+            return Optional.of(expectedVariant);
         });
 
         String label = ctx.label.getText();
@@ -425,7 +494,10 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         if (ctx.rhs != null) {
             ctx.rhs.accept(this);
         }
-        return maybeExpectedVariant.orElseThrow(() -> new ErrorAmbiguousVariantType(ctx));
+        return resolveAmbiguity(
+                maybeExpectedVariant,
+                () -> new ErrorAmbiguousVariantType(ctx)
+        );
     }
 
     @Override
@@ -468,11 +540,13 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region list
     @Override
     public StellaType visitConsList(StellaParser.ConsListContext ctx) {
-        Optional<StellaType.StellaList> maybeExpectedList = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.StellaList> maybeExpectedList = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.StellaList expectedList)) {
                 throw new ErrorUnexpectedList(ctx, expected);
             }
-            return expectedList;
+            return Optional.of(expectedList);
         });
 
         maybeExpectedList.ifPresent(expectedList -> registry.addExpectedType(expectedList.itemType()));
@@ -488,15 +562,20 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitList(StellaParser.ListContext ctx) {
-        Optional<StellaType.StellaList> maybeExpectedList = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.StellaList> maybeExpectedList = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.StellaList expectedList)) {
                 throw new ErrorUnexpectedList(ctx, expected);
             }
-            return expectedList;
+            return Optional.of(expectedList);
         });
 
         if (ctx.exprs.isEmpty()) {
-            return maybeExpectedList.orElseThrow(() -> new ErrorAmbiguousList(ctx));
+            return resolveAmbiguity(
+                    maybeExpectedList,
+                    () -> new ErrorAmbiguousList(ctx)
+            );
         }
 
         maybeExpectedList.ifPresent(expectedList -> registry.addExpectedType(expectedList.itemType()));
@@ -721,11 +800,13 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitRef(StellaParser.RefContext ctx) {
-        Optional<StellaType.Ref> maybeExpectedRef = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType.Ref> maybeExpectedRef = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
             if (!(expected instanceof StellaType.Ref expectedRef)) {
                 throw new ErrorUnexpectedReference(ctx, expected);
             }
-            return expectedRef;
+            return Optional.of(expectedRef);
         });
 
         maybeExpectedRef.ifPresent(expectedRef -> registry.addExpectedType(expectedRef.inner()));
@@ -737,7 +818,13 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitDeref(StellaParser.DerefContext ctx) {
-        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
+            return Optional.of(expected);
+        });
+
+        maybeExpected.ifPresent(expected -> registry.addExpectedType(new StellaType.Ref(expected)));
         StellaType type = ctx.expr_.accept(this);
         if (!(type instanceof StellaType.Ref(StellaType inner))) {
             throw new ErrorNotAReference(ctx.expr_, type);
@@ -775,19 +862,29 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitConstMemory(StellaParser.ConstMemoryContext ctx) {
-        return registry.consumeExpectedType().map(expected -> {
-            if (!(expected instanceof StellaType.Ref)) {
-                throw new ErrorUnexpectedMemoryAddress(ctx, expected);
+        Optional<StellaType.Ref> maybeExpectedRef = registry.consumeExpectedType().flatMap(expected -> {
+            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
+
+            if (!(expected instanceof StellaType.Ref expectedRef)) {
+                throw new  ErrorUnexpectedMemoryAddress(ctx, expected);
             }
-            return expected;
-        }).orElseThrow(() -> new ErrorAmbiguousReferenceType(ctx));
+            return Optional.of(expectedRef);
+        });
+
+        return resolveAmbiguity(
+                maybeExpectedRef,
+                () -> new ErrorAmbiguousReferenceType(ctx)
+        );
     }
     //endregion
 
     //region exceptions
     @Override
     public StellaType visitPanic(StellaParser.PanicContext ctx) {
-        return registry.consumeExpectedType().orElseThrow(() -> new ErrorAmbiguousPanicType(ctx));
+        return resolveAmbiguity(
+                registry.consumeExpectedType(),
+                () -> new ErrorAmbiguousPanicType(ctx)
+        );
     }
 
 

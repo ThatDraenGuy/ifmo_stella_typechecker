@@ -59,7 +59,8 @@ public enum ErrorType {
     ERROR_AMBIGUOUS_PANIC_TYPE(34, ErrorAmbiguousPanicType.class),
     ERROR_NOT_A_REFERENCE(35, ErrorNotAReference.class),
     ERROR_UNEXPECTED_MEMORY_ADDRESS(36, ErrorUnexpectedMemoryAddress.class),
-    ERROR_UNEXPECTED_REFERENCE(37, ErrorUnexpectedReference.class)
+    ERROR_UNEXPECTED_REFERENCE(37, ErrorUnexpectedReference.class),
+    ERROR_UNEXPECTED_SUBTYPE(38, ErrorUnexpectedSubtype.class)
     ;
 
     private final int number;

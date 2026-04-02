@@ -148,8 +148,7 @@ public class StellaPatternResolver {
                     default -> throw new ErrorUnexpectedPatternForType(pattern, type);
                 }
             }
-            case StellaType.Func func -> throw new ErrorUnexpectedPatternForType(pattern, type);
-            case StellaType.Ref ref -> throw new ErrorUnexpectedPatternForType(pattern, type);
+            default -> throw new ErrorUnexpectedPatternForType(pattern, type);
         };
     }
 
@@ -503,8 +502,7 @@ public class StellaPatternResolver {
                         exhaust(possible, possible instanceof StellaPattern.UnitPattern);
                 default -> throw new ErrorUnexpectedPatternForType(pattern, type);
             };
-            case StellaType.Func func -> throw new ErrorUnexpectedPatternForType(pattern, type);
-            case StellaType.Ref ref -> throw new ErrorUnexpectedPatternForType(pattern, type);
+            default -> throw new ErrorUnexpectedPatternForType(pattern, type);
         };
     }
 

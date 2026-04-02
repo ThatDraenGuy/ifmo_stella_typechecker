@@ -9,6 +9,9 @@ public class TypeCheckRegistry {
     private Optional<StellaType> expectedType = Optional.empty();
     private boolean isDeclarationPass = false; //костыль для объявления функций (в стелле нету форвард-декларэйшина)
 
+    private boolean subtypingEnabled = false;
+    private boolean ambiguousBottomEnabled = false;
+
     public TypeCheckRegistry() {
         enterScope("GLOBAL");
     }
@@ -50,6 +53,22 @@ public class TypeCheckRegistry {
 
     public void setDeclarationPass(boolean declarationPass) {
         isDeclarationPass = declarationPass;
+    }
+
+    public boolean isSubtypingEnabled() {
+        return subtypingEnabled;
+    }
+
+    public void setSubtypingEnabled(boolean subtypingEnabled) {
+        this.subtypingEnabled = subtypingEnabled;
+    }
+
+    public boolean isAmbiguousBottomEnabled() {
+        return ambiguousBottomEnabled;
+    }
+
+    public void setAmbiguousBottomEnabled(boolean ambiguousBottomEnabled) {
+        this.ambiguousBottomEnabled = ambiguousBottomEnabled;
     }
 
     private record Scope(String marker, Map<String, StellaType> vars) {

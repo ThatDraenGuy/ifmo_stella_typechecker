@@ -17,8 +17,12 @@ import java.util.stream.Stream;
 
 // да, я джавист. да, я люблю типы-суммы. да, мы существуем
 public sealed interface StellaType {
-    //равенство типов
-    boolean matches(StellaType other);
+    boolean matches(StellaType other); //точное равенство типов
+
+    default boolean isSubtypeOf(StellaType other) {
+        return matches(other) || other instanceof Top;
+    }
+
     List<StellaPattern> allPossiblePatterns();
 
     record Bool() implements StellaType {
@@ -80,6 +84,15 @@ public sealed interface StellaType {
         }
 
         @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof Func(List<StellaType> in2, StellaType out2)
+                            && listIsSubtypeOf(in2, in)
+                            && out.isSubtypeOf(out2)
+            );
+        }
+
+        @Override
         public List<StellaPattern> allPossiblePatterns() {
             return List.of(new StellaPattern.NoPattern());
         }
@@ -113,6 +126,13 @@ public sealed interface StellaType {
         }
 
         @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof Tuple(List<StellaType> items1) && listIsSubtypeOf(items, items1)
+            );
+        }
+
+        @Override
         public List<StellaPattern> allPossiblePatterns() {
             List<List<StellaPattern>> patterns = items.stream().map(StellaType::allPossiblePatterns).toList();
             return Utils.productList(patterns)
@@ -132,6 +152,13 @@ public sealed interface StellaType {
         public boolean matches(StellaType other) {
             return other instanceof Record(Map<String, Item> items2)
                     && mapMatches(items, items2, Item::type);
+        }
+
+        @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof Record(Map<String, Item> items1) && mapIsSubtypeOf(items1, items, Item::type)
+            );
         }
 
         @Override
@@ -169,6 +196,15 @@ public sealed interface StellaType {
         }
 
         @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof Sum(StellaType inl1, StellaType inr1)
+                            && inl.isSubtypeOf(inl1)
+                            && inr.isSubtypeOf(inr1)
+            );
+        }
+
+        @Override
         public List<StellaPattern> allPossiblePatterns() {
             return List.of(new StellaPattern.InlPattern(), new StellaPattern.InrPattern());
         }
@@ -185,6 +221,13 @@ public sealed interface StellaType {
         public boolean matches(StellaType other) {
             return other instanceof Variant(Map<String, Item> items2)
                     && mapMatchesWithOptionals(items, items2, Item::type);
+        }
+
+        @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof Variant(Map<String, Item> items1) && mapIsSubtypeOfWithOptionals(items, items1, Item::type)
+            );
         }
 
         @Override
@@ -212,6 +255,13 @@ public sealed interface StellaType {
         }
 
         @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof StellaList(StellaType itemType2) && itemType.isSubtypeOf(itemType2)
+            );
+        }
+
+        @Override
         public List<StellaPattern> allPossiblePatterns() {
             return Stream.concat(Stream.of(
                     (StellaPattern) new StellaPattern.EmptyListPattern()),
@@ -229,6 +279,52 @@ public sealed interface StellaType {
         @Override
         public boolean matches(StellaType other) {
             return other instanceof Ref(StellaType inner1) && inner.matches(inner1);
+        }
+
+        @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof Ref(StellaType inner1) && inner.isSubtypeOf(inner1)
+            );
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
+    }
+
+    record Top() implements StellaType {
+        @Override
+        public String toString() {
+            return "Top";
+        }
+
+        @Override
+        public boolean matches(StellaType other) {
+            return other instanceof Top;
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
+    }
+
+    record Bottom() implements StellaType {
+        @Override
+        public String toString() {
+            return "Bot";
+        }
+
+        @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return true;
+        }
+
+        @Override
+        public boolean matches(StellaType other) {
+            return other instanceof Bottom;
         }
 
         @Override
@@ -274,6 +370,8 @@ public sealed interface StellaType {
             );
             case StellaParser.TypeListContext list -> new StellaList(StellaType.fromAst(list.type_));
             case StellaParser.TypeRefContext ref -> new Ref(StellaType.fromAst(ref.type_));
+            case StellaParser.TypeTopContext ignored -> new Top();
+            case StellaParser.TypeBottomContext ignored -> new Bottom();
             default -> throw new UnsupportedException();
         };
     }
@@ -285,10 +383,24 @@ public sealed interface StellaType {
                 .allMatch(Boolean::booleanValue);
     }
 
+    static boolean listIsSubtypeOf(List<StellaType> fst, List<StellaType> snd) {
+        return fst.size() == snd.size()
+                && IntStream.range(0, fst.size())
+                .mapToObj(i -> fst.get(i).isSubtypeOf(snd.get(i)))
+                .allMatch(Boolean::booleanValue);
+    };
+
     static <T>boolean mapMatches(Map<String, T> fst, Map<String, T> snd, Function<T, StellaType> typeGetter) {
         return fst.keySet().equals(snd.keySet()) && fst.keySet().stream()
                 .allMatch(name ->
                         typeGetter.apply(fst.get(name)).matches(typeGetter.apply(snd.get(name))));
+    }
+
+    static <T>boolean mapIsSubtypeOf(Map<String, T> fst, Map<String, T> snd, Function<T, StellaType> typeGetter) {
+        return fst.keySet().stream().allMatch(name ->
+                snd.get(name) != null &&
+                        typeGetter.apply(snd.get(name))
+                                .isSubtypeOf(typeGetter.apply(fst.get(name))));
     }
 
     static <T>boolean mapMatchesWithOptionals(Map<String, T> fst, Map<String, T> snd, Function<T, Optional<StellaType>> typeGetter) {
@@ -298,5 +410,14 @@ public sealed interface StellaType {
                     Optional<StellaType> second = typeGetter.apply(snd.get(name));
                     return first.isPresent() == second.isPresent() && (first.isEmpty() || first.get().matches(second.get()));
                 });
+    }
+
+    static <T>boolean mapIsSubtypeOfWithOptionals(Map<String, T> fst, Map<String, T> snd, Function<T, Optional<StellaType>> typeGetter) {
+        return fst.keySet().stream().allMatch(name -> {
+            if (snd.get(name) == null) return false;
+            Optional<StellaType> first = typeGetter.apply(fst.get(name));
+            Optional<StellaType> second = typeGetter.apply(snd.get(name));
+            return first.isPresent() == second.isPresent() && (first.isEmpty() || first.get().isSubtypeOf(second.get()));
+        });
     }
 }
