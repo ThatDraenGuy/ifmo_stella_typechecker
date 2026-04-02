@@ -12,12 +12,14 @@ import java.util.stream.Stream;
 
 public class StellaPatternResolver {
     private final Map<String, StellaType> vars = new HashMap<>();
+    private final TypeCheckRegistry registry;
     private final StellaParser.PatternContext pattern;
     private final StellaType type;
 
     public record Result(Map<String, StellaType> vars, List<StellaPattern> notExhausted, StellaType type) {}
 
-    public StellaPatternResolver(StellaParser.PatternContext pattern, StellaType type) {
+    public StellaPatternResolver(TypeCheckRegistry registry, StellaParser.PatternContext pattern, StellaType type) {
+        this.registry = registry;
         this.pattern = pattern;
         this.type = type;
     }
@@ -44,10 +46,17 @@ public class StellaPatternResolver {
         }
 
         if (pattern instanceof StellaParser.PatternAscContext asc) {
-            if (!type.matches(StellaType.fromAst(asc.type_))) {
-                throw new ErrorUnexpectedPatternForType(pattern, type);
-            }
+            registry.checkTypeMismatch(type, StellaType.fromAst(asc.type_),
+                    () -> new ErrorUnexpectedPatternForType(pattern, type));
             checkPatternType(asc.pattern_, type);
+            return;
+        }
+
+        if (pattern instanceof StellaParser.PatternCastAsContext cast) {
+            StellaType castType = StellaType.fromAst(cast.type_);
+            registry.checkTypeMismatch(castType, type,
+                    () -> new ErrorUnexpectedPatternForType(pattern, type));
+            checkPatternType(cast.pattern_, castType);
             return;
         }
 
@@ -162,6 +171,13 @@ public class StellaPatternResolver {
                 throw new ErrorUnexpectedPatternForType(pattern, type);
             }
             return resolveExhaust(asc.pattern_, type, possible);
+        }
+
+        if (pattern instanceof StellaParser.PatternCastAsContext cast) {
+            StellaType castType = StellaType.fromAst(cast.type_);
+            registry.checkTypeMismatch(castType, type,
+                    () -> new ErrorUnexpectedPatternForType(pattern, type));
+            return Stream.of(possible);
         }
 
         return switch (type) {

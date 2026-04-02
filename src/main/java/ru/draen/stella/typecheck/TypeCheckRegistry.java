@@ -1,8 +1,10 @@
 package ru.draen.stella.typecheck;
 
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateFunctionDeclaration;
+import ru.draen.stella.typecheck.exceptions.TypeCheckException;
 
 import java.util.*;
+import java.util.function.Supplier;
 
 public class TypeCheckRegistry {
     private final LinkedList<Scope> scopeStack = new LinkedList<>();
@@ -69,6 +71,18 @@ public class TypeCheckRegistry {
 
     public void setAmbiguousBottomEnabled(boolean ambiguousBottomEnabled) {
         this.ambiguousBottomEnabled = ambiguousBottomEnabled;
+    }
+
+    public void checkTypeMismatch(StellaType expected, StellaType actual, Supplier<TypeCheckException> error) {
+        if (isSubtypingEnabled()) {
+            if (!actual.isSubtypeOf(expected)) {
+                throw error.get();
+            }
+        } else {
+            if (!expected.matches(actual)) {
+                throw error.get();
+            }
+        }
     }
 
     private record Scope(String marker, Map<String, StellaType> vars) {

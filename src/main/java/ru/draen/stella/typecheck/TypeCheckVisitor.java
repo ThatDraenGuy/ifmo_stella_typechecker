@@ -23,17 +23,6 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         this.registry = registry;
     }
 
-    private void checkTypeMismatch(StellaType expected, StellaType actual, Supplier<TypeCheckException> error) {
-        if (registry.isSubtypingEnabled()) {
-            if (!actual.isSubtypeOf(expected)) {
-                throw error.get();
-            }
-        } else {
-            if (!expected.matches(actual)) {
-                throw error.get();
-            }
-        }
-    }
     private void checkTypeMismatch(StellaType expected, StellaType actual, StellaParser.ExprContext expr) {
         if (registry.isSubtypingEnabled()) {
             if (!actual.isSubtypeOf(expected)) {
@@ -162,7 +151,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             IntStream.range(0, ctx.paramDecls.size()).forEach(i -> {
                 StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
                 StellaType paramType = StellaType.fromAst(paramDecl.paramType);
-                checkTypeMismatch(paramType, expectedFunc.in().get(i),
+                registry.checkTypeMismatch(paramType, expectedFunc.in().get(i),
                         () -> new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType));
             });
 
@@ -511,7 +500,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         List<StellaPattern> notExhausted = type.allPossiblePatterns();
         for (StellaParser.MatchCaseContext matchCase : ctx.cases) {
-            var result = new StellaPatternResolver(matchCase.pattern_, type).resolve(notExhausted);
+            var result = new StellaPatternResolver(registry, matchCase.pattern_, type).resolve(notExhausted);
             notExhausted = result.notExhausted();
             try {
                 registry.enterScope(matchCase.getText());
@@ -636,6 +625,50 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     }
     //endregion
 
+    //region type cast
+    @Override
+    public StellaType visitTypeCast(StellaParser.TypeCastContext ctx) {
+        StellaType castType = returnChecked(StellaType.fromAst(ctx.stellatype()), ctx);
+
+        ctx.expr_.accept(this);
+
+        return castType;
+    }
+
+    @Override
+    public StellaType visitTryCastAs(StellaParser.TryCastAsContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        StellaType castType = StellaType.fromAst(ctx.stellatype());
+
+        ctx.tryExpr.accept(this);
+
+        StellaPatternResolver.Result patResult = new StellaPatternResolver(registry, ctx.pattern_, castType)
+                .resolve(castType.allPossiblePatterns());
+//            if (!patResult.notExhausted().isEmpty()) {
+//                //TODO - nonexhaustive try pattern??
+//            }
+
+        StellaType outType;
+        try {
+            registry.enterScope(ctx.pattern_.getText());
+            for (var var : patResult.vars().entrySet()) {
+                registry.addVar(var.getKey(), var.getValue());
+            }
+            maybeExpected.ifPresent(registry::addExpectedType);
+            outType = ctx.expr_.accept(this);
+        } finally {
+            registry.exitScope();
+        }
+
+        registry.addExpectedType(outType);
+        ctx.fallbackExpr.accept(this);
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return returnChecked(outType, ctx);
+    }
+
+    //endregion
+
     //region fix
     @Override
     public StellaType visitFix(StellaParser.FixContext ctx) {
@@ -670,7 +703,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         StellaPatternResolver.Result patResult;
         try {
-            patResult = new StellaPatternResolver(ctx.patternBinding.pat, exprType)
+            patResult = new StellaPatternResolver(registry, ctx.patternBinding.pat, exprType)
                     .resolve(exprType.allPossiblePatterns());
         } catch (ErrorDuplicatePatternVariable e) {
             throw new ErrorDuplicateLetBinding(ctx, e.getVariable());
@@ -766,7 +799,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         StellaPatternResolver.Result patResult;
         try {
-            patResult = new StellaPatternResolver(ctx.patternBinding.pat, patternType)
+            patResult = new StellaPatternResolver(registry, ctx.patternBinding.pat, patternType)
                     .resolve(patternType.allPossiblePatterns());
         } catch (ErrorDuplicatePatternVariable e) {
             throw new ErrorDuplicateLetBinding(ctx, e.getVariable());
