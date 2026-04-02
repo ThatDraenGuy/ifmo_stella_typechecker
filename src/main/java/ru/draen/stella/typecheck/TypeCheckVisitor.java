@@ -4,6 +4,7 @@ import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.generated.StellaParserBaseVisitor;
 import ru.draen.stella.typecheck.exceptions.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -913,6 +914,43 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     //region exceptions
     @Override
+    public StellaType visitDeclExceptionType(StellaParser.DeclExceptionTypeContext ctx) {
+        if (registry.isDeclarationPass()) {
+            if (registry.isInLocalScope()) throw new ErrorIllegalLocalExceptionType(ctx);
+            Optional<StellaExceptionType> prevType = registry.getExceptionType();
+            prevType.ifPresent(prev -> {
+                switch (prev) {
+                    case StellaExceptionType.OpenVariant ignored -> throw new ErrorConflictingExceptionDeclarations(ctx);
+                    case StellaExceptionType.Type ignored -> throw new ErrorDuplicateExceptionType(ctx);
+                }
+            });
+            registry.setExceptionType(new StellaExceptionType.Type(StellaType.fromAst(ctx.exceptionType)));
+        }
+        return new StellaType.Bottom();
+    }
+
+    @Override
+    public StellaType visitDeclExceptionVariant(StellaParser.DeclExceptionVariantContext ctx) {
+        if (registry.isDeclarationPass()) {
+            if (registry.isInLocalScope()) throw new ErrorIllegalLocalOpenVariantException(ctx);
+            Optional<StellaExceptionType> prevType = registry.getExceptionType();
+            Optional<StellaType.Variant> maybePrev = prevType.map(prev -> switch (prev) {
+                    case StellaExceptionType.OpenVariant(StellaType.Variant prevVariant) ->
+                            prevVariant;
+                    case StellaExceptionType.Type ignored ->
+                            throw new ErrorConflictingExceptionDeclarations(ctx);
+            });
+            StellaType.Variant newVariant = StellaType.Variant.ofVariant(ctx.name.getText(), Optional.of(StellaType.fromAst(ctx.variantType)));
+            registry.setExceptionType(new StellaExceptionType.OpenVariant(
+                    maybePrev.map(prev -> prev.merge(newVariant, (item1, item2) -> {
+                        throw new ErrorDuplicateExceptionVariant(ctx, item1.name());
+                    })).orElse(newVariant)
+            ));
+        }
+        return new StellaType.Bottom();
+    }
+
+    @Override
     public StellaType visitPanic(StellaParser.PanicContext ctx) {
         return resolveAmbiguity(
                 registry.consumeExpectedType(),
@@ -920,6 +958,62 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         );
     }
 
+    @Override
+    public StellaType visitThrow(StellaParser.ThrowContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
 
+        StellaExceptionType exceptionType = registry.getExceptionType()
+                .orElseThrow(() -> new ErrorExceptionTypeNotDeclared(ctx));
+
+        registry.addExpectedType(exceptionType.type());
+        ctx.expr_.accept(this);
+
+        return resolveAmbiguity(
+                maybeExpected,
+                () -> new ErrorAmbiguousThrowType(ctx)
+        );
+    }
+
+    @Override
+    public StellaType visitTryWith(StellaParser.TryWithContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        StellaType tryType = ctx.tryExpr.accept(this);
+
+        registry.addExpectedType(tryType);
+        ctx.fallbackExpr.accept(this);
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return returnChecked(tryType, ctx);
+    }
+
+    @Override
+    public StellaType visitTryCatch(StellaParser.TryCatchContext ctx) {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        StellaType tryType = ctx.tryExpr.accept(this);
+
+        StellaExceptionType exceptionType = registry.getExceptionType()
+                .orElseThrow(() -> new ErrorExceptionTypeNotDeclared(ctx));
+        StellaPatternResolver.Result patResult = new StellaPatternResolver(registry, ctx.pat, exceptionType.type())
+                .resolve(exceptionType.type().allPossiblePatterns());
+
+        try {
+            registry.enterScope(ctx.getText());
+            for (var var : patResult.vars().entrySet()) {
+                registry.addVar(var.getKey(), var.getValue());
+            }
+
+            registry.addExpectedType(tryType);
+            ctx.fallbackExpr.accept(this);
+        } finally {
+            registry.exitScope();
+        }
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return returnChecked(tryType, ctx);
+    }
     //endregion
 }

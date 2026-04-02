@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 public class TypeCheckRegistry {
     private final LinkedList<Scope> scopeStack = new LinkedList<>();
     private Optional<StellaType> expectedType = Optional.empty();
+    private Optional<StellaExceptionType> exceptionType = Optional.empty();
     private boolean isDeclarationPass = false; //костыль для объявления функций (в стелле нету форвард-декларэйшина)
 
     private boolean subtypingEnabled = false;
@@ -25,6 +26,10 @@ public class TypeCheckRegistry {
 
     public void exitScope() {
         scopeStack.pop();
+    }
+
+    public boolean isInLocalScope() {
+        return scopeStack.size() > 1;
     }
 
     public void addExpectedType(StellaType expected) {
@@ -83,6 +88,14 @@ public class TypeCheckRegistry {
                 throw error.get();
             }
         }
+    }
+
+    public Optional<StellaExceptionType> getExceptionType() {
+        return exceptionType;
+    }
+
+    public void setExceptionType(StellaExceptionType exceptionType) {
+        this.exceptionType = Optional.of(exceptionType);
     }
 
     private record Scope(String marker, Map<String, StellaType> vars) {

@@ -55,12 +55,21 @@ public enum ErrorType {
     ERROR_DUPLICATE_PATTERN_VARIABLE(-1, ErrorDuplicatePatternVariable.class, true),
 
     //stage2
+    ERROR_EXCEPTION_TYPE_NOT_DECLARED(31, ErrorExceptionTypeNotDeclared.class),
+    ERROR_AMBIGUOUS_THROW_TYPE(32, ErrorAmbiguousThrowType.class),
     ERROR_AMBIGUOUS_REFERENCE_TYPE(33, ErrorAmbiguousReferenceType.class),
     ERROR_AMBIGUOUS_PANIC_TYPE(34, ErrorAmbiguousPanicType.class),
     ERROR_NOT_A_REFERENCE(35, ErrorNotAReference.class),
     ERROR_UNEXPECTED_MEMORY_ADDRESS(36, ErrorUnexpectedMemoryAddress.class),
     ERROR_UNEXPECTED_REFERENCE(37, ErrorUnexpectedReference.class),
-    ERROR_UNEXPECTED_SUBTYPE(38, ErrorUnexpectedSubtype.class)
+    ERROR_UNEXPECTED_SUBTYPE(38, ErrorUnexpectedSubtype.class),
+
+    //extra
+    ERROR_DUPLICATE_EXCEPTION_TYPE(-1, ErrorDuplicateExceptionType.class, true),
+    ERROR_DUPLICATE_EXCEPTION_VARIANT(-1, ErrorDuplicateExceptionVariant.class, true),
+    ERROR_CONFLICTING_EXCEPTION_DECLARATIONS(-1, ErrorConflictingExceptionDeclarations.class, true),
+    ERROR_ILLEGAL_LOCAL_EXCEPTION_TYPE(-1, ErrorIllegalLocalExceptionType.class, true),
+    ERROR_ILLEGAL_LOCAL_OPEN_VARIANT_EXCEPTION(-1, ErrorIllegalLocalOpenVariantException.class, true)
     ;
 
     private final int number;

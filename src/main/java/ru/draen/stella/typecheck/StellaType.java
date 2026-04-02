@@ -4,13 +4,13 @@ import ru.draen.stella.Utils;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordTypeFields;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateVariantTypeFields;
+import ru.draen.stella.typecheck.exceptions.TypeCheckException;
 import ru.draen.stella.typecheck.exceptions.UnsupportedException;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.BinaryOperator;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -236,7 +236,20 @@ public sealed interface StellaType {
                     .toList();
         }
 
-        record Item(String name, Optional<StellaType> type) {
+        public Variant merge(Variant other, BinaryOperator<Item> dupHandler) {
+            return new Variant(Stream.concat(items.values().stream(), other.items.values().stream())
+                    .collect(Collectors.toMap(
+                            Item::name,
+                            Function.identity(),
+                            dupHandler
+                    )));
+        }
+
+        public static Variant ofVariant(String name, Optional<StellaType> type) {
+            return new Variant(Map.of(name, new Item(name, type)));
+        }
+
+        public record Item(String name, Optional<StellaType> type) {
             @Override
             public String toString() {
                 return name + type.map(stellaType -> " : " + stellaType).orElse("");
