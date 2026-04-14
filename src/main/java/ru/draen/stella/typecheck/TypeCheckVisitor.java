@@ -837,6 +837,9 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType.Ref> maybeExpectedRef = registry.consumeExpectedType().flatMap(expected -> {
             if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
 
+            if (expected instanceof StellaType.Source(StellaType inner)) {
+                return Optional.of(new StellaType.Ref(inner));
+            }
             if (!(expected instanceof StellaType.Ref expectedRef)) {
                 throw new ErrorUnexpectedReference(ctx, expected);
             }
@@ -852,6 +855,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     @Override
     public StellaType visitDeref(StellaParser.DerefContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        maybeExpected.ifPresent(expected -> registry.addExpectedType(new StellaType.Source(expected)));
         StellaType type = ctx.expr_.accept(this);
         if (!(type instanceof StellaType.Ref(StellaType inner))) {
             throw new ErrorNotAReference(ctx.expr_, type);
@@ -892,8 +896,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType.Ref> maybeExpectedRef = registry.consumeExpectedType().flatMap(expected -> {
             if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
 
+            if (expected instanceof StellaType.Source(StellaType inner)) {
+                return Optional.of(new StellaType.Ref(inner));
+            }
             if (!(expected instanceof StellaType.Ref expectedRef)) {
-                throw new  ErrorUnexpectedMemoryAddress(ctx, expected);
+                throw new ErrorUnexpectedMemoryAddress(ctx, expected);
             }
             return Optional.of(expectedRef);
         });

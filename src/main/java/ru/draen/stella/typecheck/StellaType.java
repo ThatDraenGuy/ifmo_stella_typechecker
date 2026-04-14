@@ -281,6 +281,32 @@ public sealed interface StellaType {
         }
     }
 
+    record Source(StellaType inner) implements StellaType {
+        @Override
+        public String toString() {
+            return "&" + inner;
+        }
+
+        @Override
+        public boolean matches(StellaType other) {
+            return other instanceof Source(StellaType inner1) && inner.matches(inner1)
+                    || other instanceof Ref(StellaType inner2) && inner.matches(inner2);
+        }
+
+        @Override
+        public boolean isSubtypeOf(StellaType other) {
+            return StellaType.super.isSubtypeOf(other) || (
+                    other instanceof Source(StellaType inner1)
+                            && inner.isSubtypeOf(inner1)
+            );
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
+    }
+
     record Ref(StellaType inner) implements StellaType {
         @Override
         public String toString() {
@@ -298,6 +324,8 @@ public sealed interface StellaType {
                     other instanceof Ref(StellaType inner1)
                             && inner.isSubtypeOf(inner1)
                             && inner1.isSubtypeOf(inner)
+            ) || (
+                    other instanceof Source source && new Source(inner).isSubtypeOf(source)
             );
         }
 
