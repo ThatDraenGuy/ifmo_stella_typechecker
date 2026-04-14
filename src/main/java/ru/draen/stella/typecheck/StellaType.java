@@ -1,10 +1,9 @@
 package ru.draen.stella.typecheck;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.Utils;
 import ru.draen.stella.generated.StellaParser;
-import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordTypeFields;
-import ru.draen.stella.typecheck.exceptions.ErrorDuplicateVariantTypeFields;
-import ru.draen.stella.typecheck.exceptions.UnsupportedException;
+import ru.draen.stella.typecheck.exceptions.*;
 
 import java.util.*;
 import java.util.function.BinaryOperator;
@@ -17,7 +16,7 @@ import java.util.stream.Stream;
 public sealed interface StellaType {
     boolean matches(StellaType other); //точное равенство типов
 
-    default boolean isSubtypeOf(StellaType other) {
+    default boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
         return matches(other) || other instanceof Top;
     }
 
@@ -82,12 +81,18 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
-                    other instanceof Func(List<StellaType> in2, StellaType out2)
-                            && listIsSubtypeOf(in2, in)
-                            && out.isSubtypeOf(out2)
-            );
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            if (StellaType.super.isSubtypeOf(other, reportCtx)) return true;
+            if (!(other instanceof Func otherFunc)) {
+                return false;
+            }
+            if (in.size() != otherFunc.in.size()) {
+                throw new ErrorSubtypeUnexpectedNumberOfParametersInLambda(reportCtx, otherFunc.in.size(), in.size(), otherFunc, this);
+            }
+
+
+            return listIsSubtypeOf(otherFunc.in, in, reportCtx)
+                    && out.isSubtypeOf(otherFunc.out, reportCtx);
         }
 
         @Override
@@ -124,10 +129,15 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
-                    other instanceof Tuple(List<StellaType> items1) && listIsSubtypeOf(items, items1)
-            );
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            if (StellaType.super.isSubtypeOf(other, reportCtx)) return true;
+            if (!(other instanceof Tuple(List<StellaType> items1))) {
+                return false;
+            }
+            if (items.size() != items1.size()) {
+                throw new ErrorUnexpectedTupleLength(null, items1.size(), items.size(), other);
+            }
+            return listIsSubtypeOf(items, items1, reportCtx);
         }
 
         @Override
@@ -153,10 +163,22 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
-                    other instanceof Record(Map<String, Item> items1) && mapIsSubtypeOf(items1, items, Item::type)
-            );
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            if (StellaType.super.isSubtypeOf(other, reportCtx)) return true;
+            if (!(other instanceof Record otherRec)) {
+                return false;
+            }
+
+            for (String field : otherRec.items.keySet()) {
+                if (!items.containsKey(field)) {
+                    throw new ErrorSubtypeMissingRecordFields(reportCtx, otherRec, this, field);
+                }
+                if (!items.get(field).type.isSubtypeOf(otherRec.items.get(field).type, reportCtx)) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         @Override
@@ -194,11 +216,11 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            return StellaType.super.isSubtypeOf(other, reportCtx) || (
                     other instanceof Sum(StellaType inl1, StellaType inr1)
-                            && inl.isSubtypeOf(inl1)
-                            && inr.isSubtypeOf(inr1)
+                            && inl.isSubtypeOf(inl1, reportCtx)
+                            && inr.isSubtypeOf(inr1, reportCtx)
             );
         }
 
@@ -222,10 +244,33 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
-                    other instanceof Variant(Map<String, Item> items1) && mapIsSubtypeOfWithOptionals(items, items1, Item::type)
-            );
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            if (StellaType.super.isSubtypeOf(other, reportCtx)) return true;
+            if (!(other instanceof Variant otherVar)) {
+                return false;
+            }
+
+            for (String label : items.keySet()) {
+                if (!otherVar.items.containsKey(label)) {
+                    throw new ErrorSubtypeUnexpectedVariantLabel(reportCtx, otherVar, this, label);
+                }
+                Optional<StellaType> expectedInner = otherVar.items.get(label).type();
+                Optional<StellaType> actualInner = items.get(label).type();
+
+                if (expectedInner.isEmpty() && actualInner.isPresent()) {
+                    throw new ErrorSubtypeUnexpectedDataForNullaryLabel(reportCtx, otherVar, this, label);
+                }
+
+                if (expectedInner.isPresent() && actualInner.isEmpty()) {
+                    throw new ErrorSubtypeMissingDataForLabel(reportCtx, otherVar, this, label);
+                }
+
+                if (!(actualInner.isPresent() && actualInner.get().isSubtypeOf(expectedInner.get(), reportCtx))) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         @Override
@@ -266,9 +311,9 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
-                    other instanceof StellaList(StellaType itemType2) && itemType.isSubtypeOf(itemType2)
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            return StellaType.super.isSubtypeOf(other, reportCtx) || (
+                    other instanceof StellaList(StellaType itemType2) && itemType.isSubtypeOf(itemType2, reportCtx)
             );
         }
 
@@ -294,10 +339,10 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            return StellaType.super.isSubtypeOf(other, reportCtx) || (
                     other instanceof Source(StellaType inner1)
-                            && inner.isSubtypeOf(inner1)
+                            && inner.isSubtypeOf(inner1, reportCtx)
             );
         }
 
@@ -319,13 +364,13 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
-            return StellaType.super.isSubtypeOf(other) || (
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
+            return StellaType.super.isSubtypeOf(other, reportCtx) || (
                     other instanceof Ref(StellaType inner1)
-                            && inner.isSubtypeOf(inner1)
-                            && inner1.isSubtypeOf(inner)
+                            && inner.isSubtypeOf(inner1, reportCtx)
+                            && inner1.isSubtypeOf(inner, reportCtx)
             ) || (
-                    other instanceof Source source && new Source(inner).isSubtypeOf(source)
+                    other instanceof Source source && new Source(inner).isSubtypeOf(source, reportCtx)
             );
         }
 
@@ -359,7 +404,7 @@ public sealed interface StellaType {
         }
 
         @Override
-        public boolean isSubtypeOf(StellaType other) {
+        public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
             return true;
         }
 
@@ -424,24 +469,17 @@ public sealed interface StellaType {
                 .allMatch(Boolean::booleanValue);
     }
 
-    static boolean listIsSubtypeOf(List<StellaType> fst, List<StellaType> snd) {
+    static boolean listIsSubtypeOf(List<StellaType> fst, List<StellaType> snd, ParserRuleContext reportCtx) {
         return fst.size() == snd.size()
                 && IntStream.range(0, fst.size())
-                .mapToObj(i -> fst.get(i).isSubtypeOf(snd.get(i)))
+                .mapToObj(i -> fst.get(i).isSubtypeOf(snd.get(i), reportCtx))
                 .allMatch(Boolean::booleanValue);
-    };
+    }
 
     static <T>boolean mapMatches(Map<String, T> fst, Map<String, T> snd, Function<T, StellaType> typeGetter) {
         return fst.keySet().equals(snd.keySet()) && fst.keySet().stream()
                 .allMatch(name ->
                         typeGetter.apply(fst.get(name)).matches(typeGetter.apply(snd.get(name))));
-    }
-
-    static <T>boolean mapIsSubtypeOf(Map<String, T> fst, Map<String, T> snd, Function<T, StellaType> typeGetter) {
-        return fst.keySet().stream().allMatch(name ->
-                snd.get(name) != null &&
-                        typeGetter.apply(snd.get(name))
-                                .isSubtypeOf(typeGetter.apply(fst.get(name))));
     }
 
     static <T>boolean mapMatchesWithOptionals(Map<String, T> fst, Map<String, T> snd, Function<T, Optional<StellaType>> typeGetter) {
@@ -451,14 +489,5 @@ public sealed interface StellaType {
                     Optional<StellaType> second = typeGetter.apply(snd.get(name));
                     return first.isPresent() == second.isPresent() && (first.isEmpty() || first.get().matches(second.get()));
                 });
-    }
-
-    static <T>boolean mapIsSubtypeOfWithOptionals(Map<String, T> fst, Map<String, T> snd, Function<T, Optional<StellaType>> typeGetter) {
-        return fst.keySet().stream().allMatch(name -> {
-            if (snd.get(name) == null) return false;
-            Optional<StellaType> first = typeGetter.apply(fst.get(name));
-            Optional<StellaType> second = typeGetter.apply(snd.get(name));
-            return first.isPresent() == second.isPresent() && (first.isEmpty() || first.get().isSubtypeOf(second.get()));
-        });
     }
 }

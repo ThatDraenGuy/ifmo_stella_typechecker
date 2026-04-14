@@ -1,6 +1,7 @@
 package ru.draen.stella.typecheck;
 
-import ru.draen.stella.typecheck.exceptions.ErrorDuplicateFunctionDeclaration;
+import org.antlr.v4.runtime.ParserRuleContext;
+import ru.draen.stella.typecheck.exceptions.ErrorUnexpectedSubtype;
 import ru.draen.stella.typecheck.exceptions.TypeCheckException;
 
 import java.util.*;
@@ -78,10 +79,10 @@ public class TypeCheckRegistry {
         this.ambiguousBottomEnabled = ambiguousBottomEnabled;
     }
 
-    public void checkTypeMismatch(StellaType expected, StellaType actual, Supplier<TypeCheckException> error) {
+    public void checkTypeMismatch(StellaType expected, StellaType actual, ParserRuleContext ctx, Supplier<TypeCheckException> error) {
         if (isSubtypingEnabled()) {
-            if (!actual.isSubtypeOf(expected)) {
-                throw error.get();
+            if (!actual.isSubtypeOf(expected, ctx)) {
+                throw new ErrorUnexpectedSubtype(ctx, expected, actual);
             }
         } else {
             if (!expected.matches(actual)) {

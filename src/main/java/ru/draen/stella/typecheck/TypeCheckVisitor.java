@@ -4,7 +4,6 @@ import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.generated.StellaParserBaseVisitor;
 import ru.draen.stella.typecheck.exceptions.*;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,7 +25,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     private void checkTypeMismatch(StellaType expected, StellaType actual, StellaParser.ExprContext expr) {
         if (registry.isSubtypingEnabled()) {
-            if (!actual.isSubtypeOf(expected)) {
+            if (!actual.isSubtypeOf(expected, expr)) {
                 throw new ErrorUnexpectedSubtype(expr, expected, actual);
             }
         } else {
@@ -37,9 +36,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     }
 
     private StellaType returnChecked(StellaType result, StellaParser.ExprContext expr) {
-        registry.consumeExpectedType().ifPresent(expected -> {
-            checkTypeMismatch(expected, result, expr);
-        });
+        registry.consumeExpectedType().ifPresent(expected -> checkTypeMismatch(expected, result, expr));
         return result;
     }
 
@@ -146,14 +143,17 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             }
 
             if (ctx.paramDecls.size() != expectedFunc.in().size()) {
-                throw new ErrorUnexpectedNumberOfParametersInLambda(ctx, expectedFunc.in().size(), ctx.paramDecls.size(), expected);
+                throw new ErrorStrictUnexpectedNumberOfParametersInLambda(ctx, expectedFunc.in().size(), ctx.paramDecls.size(), expected);
             }
 
             IntStream.range(0, ctx.paramDecls.size()).forEach(i -> {
                 StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
                 StellaType paramType = StellaType.fromAst(paramDecl.paramType);
-                registry.checkTypeMismatch(paramType, expectedFunc.in().get(i),
-                        () -> new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType));
+                try {
+                    checkTypeMismatch(paramType, expectedFunc.in().get(i), ctx);
+                } catch (ErrorUnexpectedTypeForExpression ignored) {
+                    throw new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType);
+                }
             });
 
             return Optional.of(expectedFunc);
@@ -363,7 +363,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             ));
             for (String expectedField : expectedRecord.items().keySet()) {
                 if (!actualFields.containsKey(expectedField)) {
-                    throw new ErrorMissingRecordFields(ctx, expected, expectedField);
+                    throw new ErrorStrictMissingRecordFields(ctx, expected, expectedField);
                 }
             }
 
@@ -467,16 +467,16 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         String label = ctx.label.getText();
         maybeExpectedVariant.ifPresent(expectedVariant -> {
             if (!expectedVariant.items().containsKey(label)) {
-                throw new ErrorUnexpectedVariantLabel(ctx, expectedVariant, label);
+                throw new ErrorStrictUnexpectedVariantLabel(ctx, expectedVariant, label);
             }
             Optional<StellaType> expectedInner = expectedVariant.items().get(label).type();
 
             if (expectedInner.isEmpty() && ctx.rhs != null) {
-                throw new ErrorUnexpectedDataForNullaryLabel(ctx, expectedVariant, label);
+                throw new ErrorStrictUnexpectedDataForNullaryLabel(ctx, expectedVariant, label);
             }
 
             if (expectedInner.isPresent() && ctx.rhs == null) {
-                throw new ErrorMissingDataForLabel(ctx, expectedVariant, label);
+                throw new ErrorStrictMissingDataForLabel(ctx, expectedVariant, label);
             }
 
             expectedInner.ifPresent(registry::addExpectedType);
