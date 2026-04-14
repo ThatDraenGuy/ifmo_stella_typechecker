@@ -295,7 +295,9 @@ public sealed interface StellaType {
         @Override
         public boolean isSubtypeOf(StellaType other) {
             return StellaType.super.isSubtypeOf(other) || (
-                    other instanceof Ref(StellaType inner1) && inner.isSubtypeOf(inner1)
+                    other instanceof Ref(StellaType inner1)
+                            && inner.isSubtypeOf(inner1)
+                            && inner1.isSubtypeOf(inner)
             );
         }
 

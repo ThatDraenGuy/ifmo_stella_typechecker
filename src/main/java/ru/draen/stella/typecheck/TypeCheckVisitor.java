@@ -846,19 +846,12 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         maybeExpectedRef.ifPresent(expectedRef -> registry.addExpectedType(expectedRef.inner()));
         StellaType inner = ctx.expr_.accept(this);
 
-        maybeExpectedRef.ifPresent(registry::addExpectedType);
-        return returnChecked(new StellaType.Ref(inner), ctx);
+        return new StellaType.Ref(inner);
     }
 
     @Override
     public StellaType visitDeref(StellaParser.DerefContext ctx) {
-        Optional<StellaType> maybeExpected = registry.consumeExpectedType().flatMap(expected -> {
-            if (registry.isSubtypingEnabled() && expected instanceof StellaType.Top) return Optional.empty();
-
-            return Optional.of(expected);
-        });
-
-        maybeExpected.ifPresent(expected -> registry.addExpectedType(new StellaType.Ref(expected)));
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType type = ctx.expr_.accept(this);
         if (!(type instanceof StellaType.Ref(StellaType inner))) {
             throw new ErrorNotAReference(ctx.expr_, type);
