@@ -6,9 +6,4 @@ public class Stage2Test extends TypecheckerTestBase {
     protected String stage() {
         return "stage2";
     }
-
-    @Override
-    protected boolean extraDisabled() {
-        return true;
-    }
 }

@@ -4,13 +4,11 @@ import ru.draen.stella.Utils;
 import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordTypeFields;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateVariantTypeFields;
-import ru.draen.stella.typecheck.exceptions.TypeCheckException;
 import ru.draen.stella.typecheck.exceptions.UnsupportedException;
 
 import java.util.*;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;

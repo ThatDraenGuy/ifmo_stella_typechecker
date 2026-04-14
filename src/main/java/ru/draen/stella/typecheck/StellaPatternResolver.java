@@ -54,7 +54,7 @@ public class StellaPatternResolver {
 
         if (pattern instanceof StellaParser.PatternCastAsContext cast) {
             StellaType castType = StellaType.fromAst(cast.type_);
-            registry.checkTypeMismatch(castType, type,
+            registry.checkTypeMismatch(type, castType,
                     () -> new ErrorUnexpectedPatternForType(pattern, type));
             checkPatternType(cast.pattern_, castType);
             return;
@@ -175,7 +175,7 @@ public class StellaPatternResolver {
 
         if (pattern instanceof StellaParser.PatternCastAsContext cast) {
             StellaType castType = StellaType.fromAst(cast.type_);
-            registry.checkTypeMismatch(castType, type,
+            registry.checkTypeMismatch(type, castType,
                     () -> new ErrorUnexpectedPatternForType(pattern, type));
             return Stream.of(possible);
         }
