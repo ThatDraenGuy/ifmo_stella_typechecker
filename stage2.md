@@ -15,7 +15,8 @@
 Данный тайпчекер поддерживает следующие НЕОБЯЗАТЕЛЬНЫЕ по требованиям второго этапа части языка Stella:
 1. ✅ Расширение `#open-variant-exceptions`
 2. ✅ Расширение `#try-cast-as`
-3. ✅ Дополнительные коды ошибок
+3. ✅ Расширение `#type-cast-patterns`
+4. ✅ Дополнительные коды ошибок
     - ✅ `ERROR_DUPLICATE_EXCEPTION_TYPE`
     - ✅ `ERROR_DUPLICATE_EXCEPTION_VARIANT`
     - ✅ `ERROR_CONFLICTING_EXCEPTION_DECLARATIONS`
