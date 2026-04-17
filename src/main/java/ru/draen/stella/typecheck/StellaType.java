@@ -131,13 +131,13 @@ public sealed interface StellaType {
         @Override
         public boolean isSubtypeOf(StellaType other, ParserRuleContext reportCtx) {
             if (StellaType.super.isSubtypeOf(other, reportCtx)) return true;
-            if (!(other instanceof Tuple(List<StellaType> items1))) {
+            if (!(other instanceof Tuple otherTuple)) {
                 return false;
             }
-            if (items.size() != items1.size()) {
-                throw new ErrorUnexpectedTupleLength(null, items1.size(), items.size(), other);
+            if (items.size() != otherTuple.items.size()) {
+                throw new ErrorSubtypeUnexpectedTupleLength(reportCtx, otherTuple.items.size(), items.size(), otherTuple, this);
             }
-            return listIsSubtypeOf(items, items1, reportCtx);
+            return listIsSubtypeOf(items, otherTuple.items, reportCtx);
         }
 
         @Override

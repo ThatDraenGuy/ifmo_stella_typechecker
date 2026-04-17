@@ -312,7 +312,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             }
 
             if (ctx.exprs.size() != expectedTuple.items().size()) {
-                throw new ErrorUnexpectedTupleLength(ctx, expectedTuple.items().size(), ctx.exprs.size(), expected);
+                throw new ErrorStrictUnexpectedTupleLength(ctx, expectedTuple.items().size(), ctx.exprs.size(), expected);
             }
             return Optional.of(expectedTuple);
         });
@@ -645,9 +645,6 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         StellaPatternResolver.Result patResult = new StellaPatternResolver(registry, ctx.pattern_, castType)
                 .resolve(castType.allPossiblePatterns());
-//            if (!patResult.notExhausted().isEmpty()) {
-//                //TODO - nonexhaustive try pattern??
-//            }
 
         StellaType outType;
         try {
