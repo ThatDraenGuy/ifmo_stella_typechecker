@@ -1,15 +1,15 @@
 package ru.draen.stella.typecheck;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.Token;
 import ru.draen.stella.Utils;
 import ru.draen.stella.generated.StellaParser;
+import ru.draen.stella.typecheck.exceptions.ErrorAmbiguousTypeVar;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordTypeFields;
 import ru.draen.stella.typecheck.exceptions.ErrorDuplicateVariantTypeFields;
 import ru.draen.stella.typecheck.exceptions.UnsupportedException;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -20,6 +20,9 @@ public sealed interface StellaType {
     //равенство типов
     boolean matches(StellaType other);
     List<StellaPattern> allPossiblePatterns();
+    boolean contains(TypeVar var);
+    StellaType replace(TypeMapping mapping);
+    default void checkAmbiguity() {}
 
     record Bool() implements StellaType {
         @Override
@@ -36,6 +39,16 @@ public sealed interface StellaType {
         public List<StellaPattern> allPossiblePatterns() {
             return List.of(new StellaPattern.FalsePattern(), new StellaPattern.TruePattern());
         }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return false;
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return this;
+        }
     }
     record Nat() implements StellaType {
         @Override
@@ -51,6 +64,16 @@ public sealed interface StellaType {
         @Override
         public List<StellaPattern> allPossiblePatterns() {
             return List.of(new StellaPattern.ZeroPattern(), new StellaPattern.SuccPattern());
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return false;
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return this;
         }
     }
     record Func(List<StellaType> in, StellaType out) implements StellaType {
@@ -83,6 +106,25 @@ public sealed interface StellaType {
         public List<StellaPattern> allPossiblePatterns() {
             return List.of(new StellaPattern.NoPattern());
         }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return in.stream().anyMatch(type -> type.contains(var)) || out.contains(var);
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return new Func(
+                    in.stream().map(type -> type.replace(mapping)).toList(),
+                    out.replace(mapping)
+            );
+        }
+
+        @Override
+        public void checkAmbiguity() {
+            in.forEach(StellaType::checkAmbiguity);
+            out.checkAmbiguity();
+        }
     }
     record Unit() implements StellaType {
         @Override
@@ -98,6 +140,16 @@ public sealed interface StellaType {
         @Override
         public List<StellaPattern> allPossiblePatterns() {
             return List.of(new StellaPattern.UnitPattern());
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return false;
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return this;
         }
     }
     record Tuple(List<StellaType> items) implements StellaType {
@@ -118,6 +170,23 @@ public sealed interface StellaType {
             return Utils.productList(patterns)
                     .map(set -> (StellaPattern)(new StellaPattern.TuplePattern(set)))
                     .toList();
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return items.stream().anyMatch(type -> type.contains(var));
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return new Tuple(
+                    items.stream().map(type -> type.replace(mapping)).toList()
+            );
+        }
+
+        @Override
+        public void checkAmbiguity() {
+            items.forEach(StellaType::checkAmbiguity);
         }
     }
     record Record(Map<String, Item> items) implements StellaType {
@@ -150,6 +219,24 @@ public sealed interface StellaType {
                     .toList();
         }
 
+        @Override
+        public boolean contains(TypeVar var) {
+            return items.values().stream().anyMatch(item -> item.type.contains(var));
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return new Record(items.entrySet().stream()
+                    .peek(entry ->
+                            entry.setValue(new Item(entry.getKey(), entry.getValue().type().replace(mapping))))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+        }
+
+        @Override
+        public void checkAmbiguity() {
+            items.values().forEach(item -> item.type.checkAmbiguity());
+        }
+
         record Item(String name, StellaType type) {
             @Override
             public String toString() {
@@ -172,6 +259,22 @@ public sealed interface StellaType {
         public List<StellaPattern> allPossiblePatterns() {
             return List.of(new StellaPattern.InlPattern(), new StellaPattern.InrPattern());
         }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return inl.contains(var) || inr.contains(var);
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return new Sum(inl.replace(mapping), inr.replace(mapping));
+        }
+
+        @Override
+        public void checkAmbiguity() {
+            inl.checkAmbiguity();
+            inr.checkAmbiguity();
+        }
     }
     record Variant(Map<String, Item> items) implements StellaType {
         @Override
@@ -191,6 +294,25 @@ public sealed interface StellaType {
         public List<StellaPattern> allPossiblePatterns() {
             return items.keySet().stream().map(name -> (StellaPattern) (new StellaPattern.VariantPattern(name)))
                     .toList();
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return items.values().stream().anyMatch(item -> item.type.isPresent() && item.type.get().contains(var));
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return new Variant(items.entrySet().stream()
+                    .peek(entry ->
+                            entry.setValue(new Item(entry.getKey(), entry.getValue().type()
+                                    .map(type -> type.replace(mapping)))))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+        }
+
+        @Override
+        public void checkAmbiguity() {
+            items.values().forEach(item -> item.type.ifPresent(StellaType::checkAmbiguity));
         }
 
         record Item(String name, Optional<StellaType> type) {
@@ -217,6 +339,117 @@ public sealed interface StellaType {
                     (StellaPattern) new StellaPattern.EmptyListPattern()),
                     itemType.allPossiblePatterns().stream().map(StellaPattern.ConsPattern::new)
             ).toList();
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return itemType.contains(var);
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return new StellaList(itemType.replace(mapping));
+        }
+
+        @Override
+        public void checkAmbiguity() {
+            itemType.checkAmbiguity();
+        }
+    }
+    record Forall(Map<String, NamedVar> vars, StellaType inner) implements StellaType {
+        @Override
+        public String toString() {
+            return "forall " + vars.values().stream().map(Objects::toString).collect(Collectors.joining(",")) + ". " + inner.toString();
+        }
+
+        @Override
+        public boolean matches(StellaType other) {
+            return false;
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return false; //TODO
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return null; //TODO
+        }
+    }
+
+    sealed interface TypeVar extends StellaType {}
+    record NamedVar(String name) implements TypeVar {
+        @Override
+        public String toString() {
+            return name;
+        }
+
+        @Override
+        public boolean matches(StellaType other) {
+            return false;
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return this == var;
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return contains(mapping.var()) ? mapping.type() : this;
+        }
+    }
+    record FreshVar(int id, ParserRuleContext source) implements TypeVar {
+        private static int LAST_ID = 0;
+        private static final List<StellaType> allFreshVars = new ArrayList<>();
+        public static FreshVar create(ParserRuleContext source) {
+            FreshVar result = new FreshVar(++LAST_ID, source);
+            allFreshVars.add(result);
+            return result;
+        }
+        public static List<StellaType> all() {
+            return allFreshVars;
+        }
+
+        @Override
+        public String toString() {
+            return "?T" + id;
+        }
+
+        @Override
+        public boolean matches(StellaType other) {
+            return other instanceof FreshVar(int id1, ParserRuleContext source1) && id == id1;
+        }
+
+        @Override
+        public List<StellaPattern> allPossiblePatterns() {
+            return List.of(new StellaPattern.NoPattern());
+        }
+
+        @Override
+        public boolean contains(TypeVar var) {
+            return var instanceof FreshVar(int id1, ParserRuleContext ignored) && id == id1;
+        }
+
+        @Override
+        public StellaType replace(TypeMapping mapping) {
+            return contains(mapping.var()) ? mapping.type() : this;
+        }
+
+        @Override
+        public void checkAmbiguity() {
+            throw new ErrorAmbiguousTypeVar(this);
         }
     }
 
@@ -256,6 +489,14 @@ public sealed interface StellaType {
                     ))
             );
             case StellaParser.TypeListContext list -> new StellaList(StellaType.fromAst(list.type_));
+            case StellaParser.TypeAutoContext auto -> FreshVar.create(auto);
+            case StellaParser.TypeForAllContext forall -> new Forall(
+                    forall.types.stream().collect(Collectors.toMap(
+                            Token::getText,
+                            type -> new NamedVar(type.getText()) //TODO think
+                    )),
+                    StellaType.fromAst(forall.type_)
+            );
             default -> throw new UnsupportedException();
         };
     }

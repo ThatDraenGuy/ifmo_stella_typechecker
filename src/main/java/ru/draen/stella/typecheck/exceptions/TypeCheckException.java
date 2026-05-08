@@ -6,7 +6,7 @@ import org.antlr.v4.runtime.misc.Interval;
 
 public abstract class TypeCheckException extends RuntimeException {
     public final String report() {
-        return ErrorType.getByException(getClass()) + ":\n"
+        return getErrorType() + ":\n"
                 + (getSource() == null ? "" : reportSource(getSource()))
                 + reportText();
     }
@@ -22,12 +22,12 @@ public abstract class TypeCheckException extends RuntimeException {
                 + ctx.start.getInputStream().getText(new Interval(start, end))
                 + "\n";
     }
-    protected String reportText() {
-        return "Текст ошибки не указан";
-    }
+    protected abstract String reportText();
 
-    protected ParserRuleContext getSource() {
-        return null;
+    protected abstract ParserRuleContext getSource();
+
+    protected ErrorType getErrorType() {
+        return ErrorType.getByException(getClass());
     }
 
     @Override

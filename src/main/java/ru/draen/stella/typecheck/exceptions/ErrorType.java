@@ -51,7 +51,12 @@ public enum ErrorType {
     ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN(-1, ErrorUnexpectedNullaryVariantPattern.class, true),
     ERROR_DUPLICATE_LET_BINDING(-1, ErrorDuplicateLetBinding.class, true),
     ERROR_DUPLICATE_FUNCTION_PARAMETER(-1, ErrorDuplicateFunctionParameter.class, true),
-    ERROR_DUPLICATE_PATTERN_VARIABLE(-1, ErrorDuplicatePatternVariable.class, true)
+    ERROR_DUPLICATE_PATTERN_VARIABLE(-1, ErrorDuplicatePatternVariable.class, true),
+
+    //stage3
+
+    //extra
+    ERROR_AMBIGUOUS_TYPE(-1, ErrorAmbiguousTypeVar.class, true)
     ;
 
     private final int number;

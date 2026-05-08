@@ -13,6 +13,8 @@ import java.util.stream.IntStream;
 
 public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     private static final String MAIN_FUNC_NAME = "main";
+    private static final String TYPE_RECONSTRUCTION_EXT = "#type-reconstruction";
+    private static final String UNIVERSAL_TYPES_EXT = "#universal-types";
 
     private final TypeCheckRegistry registry;
 
@@ -22,23 +24,43 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     private void checkTypeMismatch(StellaType expected, StellaType actual, StellaParser.ExprContext expr) {
         if (!expected.matches(actual)) {
-            throw new ErrorUnexpectedTypeForExpression(expr, expected, actual);
+            throw new ErrorUnexpectedTypeForStrictExpression(expr, expected, actual);
         }
     }
 
     private StellaType returnChecked(StellaType result, StellaParser.ExprContext expr) {
         registry.consumeExpectedType().ifPresent(expected -> {
-            checkTypeMismatch(expected, result, expr);
+            if (registry.isTypeReconstructionEnabled()) {
+                registry.addConstraint(new Constraint(result, expected, expr));
+            } else {
+                checkTypeMismatch(expected, result, expr);
+            }
         });
         return result;
     }
 
     @Override
+    public StellaType visitAnExtension(StellaParser.AnExtensionContext ctx) {
+        for (var ext : ctx.extensionNames) {
+            String name = ext.getText();
+            if (name.equals(TYPE_RECONSTRUCTION_EXT)) {
+                registry.setTypeReconstructionEnabled(true);
+            }
+            if (name.equals(UNIVERSAL_TYPES_EXT)) {
+                registry.setUniversalTypesEnabled(true);
+            }
+        }
+        return new StellaType.Unit();
+    }
+
+    @Override
     public StellaType visitProgram(StellaParser.ProgramContext ctx) {
+        ctx.extensions.forEach(ext -> ext.accept(this));
+
         registry.setDeclarationPass(true);
-        visitChildren(ctx);
+        ctx.decls.forEach(decl -> decl.accept(this));
         registry.setDeclarationPass(false);
-        StellaType res = visitChildren(ctx);
+        ctx.decls.forEach(decl -> decl.accept(this));
 
         StellaType mainFunc = registry.getVar(MAIN_FUNC_NAME).orElseThrow(ErrorMissingMain::new);
         if (!(mainFunc instanceof StellaType.Func(List<StellaType> in, StellaType out))) {
@@ -48,7 +70,10 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         if (in.size() != 1) {
             throw new ErrorIncorrectArityOfMain();
         }
-        return res;
+        if (registry.isTypeReconstructionEnabled()) {
+            registry.unifyConstraints();
+        }
+        return new StellaType.Unit();
     }
 
     @Override
@@ -71,18 +96,22 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region funcs
     @Override
     public StellaType visitDeclFun(StellaParser.DeclFunContext ctx) {
-        StellaType.Func funcType = StellaType.Func.fromDeclFun(ctx);
+
         if (registry.isDeclarationPass()) {
+            StellaType.Func funcType = StellaType.Func.fromDeclFun(ctx);
             if (registry.addVar(ctx.name.getText(), funcType)) {
                 throw new ErrorDuplicateFunctionDeclaration(ctx);
             }
             return funcType;
         }
+        StellaType.Func funcType = (StellaType.Func) registry.getVar(ctx.name.getText()).get();
 
         try {
             registry.enterScope(ctx.name.getText());
-            for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
-                if (registry.addVar(paramDecl.name.getText(), StellaType.fromAst(paramDecl.paramType))) {
+            for (int i = 0; i < ctx.paramDecls.size(); i++) {
+                StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
+                StellaType paramType = funcType.in().get(i);
+                if (registry.addVar(paramDecl.name.getText(), paramType)) {
                     throw new ErrorDuplicateFunctionParameter(ctx, paramDecl.name.getText());
                 }
             }
@@ -103,7 +132,12 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
     @Override
     public StellaType visitAbstraction(StellaParser.AbstractionContext ctx) {
-        Optional<StellaType.Func> maybeExpectedFunc = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        Optional<StellaType.Func> maybeExpectedFunc = maybeExpected.flatMap(expected -> {
+            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar var) {
+                return Optional.empty();
+            }
+
             if (!(expected instanceof StellaType.Func expectedFunc)) {
                 throw new ErrorUnexpectedLambda(ctx, expected);
             }
@@ -114,20 +148,25 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
             IntStream.range(0, ctx.paramDecls.size()).forEach(i -> {
                 StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
-                StellaType paramType = StellaType.fromAst(paramDecl.paramType);
-                if (!paramType.matches(expectedFunc.in().get(i))) {
-                    throw new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType);
+                if (registry.isTypeReconstructionEnabled()) {
+                    registry.addExpectedType(expectedFunc.in().get(i));
+                    returnChecked(StellaType.fromAst(paramDecl.paramType), ctx);
+                } else {
+                    StellaType paramType = StellaType.fromAst(paramDecl.paramType);
+                    if (!paramType.matches(expectedFunc.in().get(i))) {
+                        throw new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType);
+                    }
                 }
             });
 
-            return expectedFunc;
+            return Optional.of(expectedFunc);
         });
 
         StellaType returnType;
         try {
             registry.enterScope(ctx.getText());
             for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
-                StellaType paramType = StellaType.fromAst(paramDecl.paramType);
+                StellaType paramType = StellaType.fromAst(paramDecl.paramType); //TODO fix!!!!!
                 if (registry.addVar(paramDecl.name.getText(), paramType)) {
                     throw new ErrorDuplicateFunctionParameter(ctx, paramDecl.name.getText());
                 }
@@ -139,16 +178,29 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             registry.exitScope();
         }
 
-        maybeExpectedFunc.ifPresent(registry::addExpectedType);
+        maybeExpected.ifPresent(registry::addExpectedType);
         return returnChecked(StellaType.Func.fromAbstraction(ctx, returnType), ctx);
     }
 
     @Override
     public StellaType visitApplication(StellaParser.ApplicationContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
-        StellaType type = ctx.fun.accept(this);
-        if (!(type instanceof StellaType.Func(List<StellaType> inTypes, StellaType outType))) {
-            throw new ErrorNotAFunction(ctx.fun, type);
+
+        StellaType funcType;
+        if (registry.isTypeReconstructionEnabled()) {
+            StellaType returnType = maybeExpected.orElseGet(() -> StellaType.FreshVar.create(ctx.expr));
+            registry.addExpectedType(new StellaType.Func(List.of(StellaType.FreshVar.create(ctx.fun)), returnType));
+            funcType = ctx.fun.accept(this);
+            if (funcType instanceof StellaType.FreshVar) {
+                maybeExpected.ifPresent(registry::addExpectedType);
+                return returnChecked(returnType, ctx);
+            }
+        } else {
+            funcType = ctx.fun.accept(this);
+        }
+
+        if (!(funcType instanceof StellaType.Func(List<StellaType> inTypes, StellaType outType))) {
+            throw new ErrorNotAFunction(ctx.fun, funcType);
         }
 
         if (ctx.args.size() != inTypes.size()) {
@@ -185,10 +237,8 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         maybeExpected.ifPresent(registry::addExpectedType);
         StellaType trueType = ctx.thenExpr.accept(this);
-        maybeExpected.ifPresent(registry::addExpectedType);
-        StellaType falseType = ctx.elseExpr.accept(this);
-
-        checkTypeMismatch(trueType, falseType, ctx.elseExpr);
+        registry.addExpectedType(trueType);
+        ctx.elseExpr.accept(this);
 
         maybeExpected.ifPresent(registry::addExpectedType);
         return returnChecked(trueType, ctx);
@@ -270,7 +320,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region tuple
     @Override
     public StellaType visitTuple(StellaParser.TupleContext ctx) {
-        Optional<StellaType.Tuple> maybeExpectedTuple = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        Optional<StellaType.Tuple> maybeExpectedTuple = maybeExpected.flatMap(expected -> {
+            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar) {
+                return Optional.empty();
+            }
             if (!(expected instanceof StellaType.Tuple expectedTuple)) {
                 throw new ErrorUnexpectedTuple(ctx, expected);
             }
@@ -278,7 +332,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             if (ctx.exprs.size() != expectedTuple.items().size()) {
                 throw new ErrorUnexpectedTupleLength(ctx, expectedTuple.items().size(), ctx.exprs.size(), expected);
             }
-            return expectedTuple;
+            return Optional.of(expectedTuple);
         });
 
         List<StellaType> types = IntStream.range(0, ctx.exprs.size()).mapToObj(i -> {
@@ -286,17 +340,39 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             maybeExpectedTuple.ifPresent(expected -> registry.addExpectedType(expected.items().get(i)));
             return expr.accept(this);
         }).toList();
-        return new StellaType.Tuple(types);
+
+        maybeExpected.ifPresent(registry::addExpectedType);
+        return returnChecked(new StellaType.Tuple(types), ctx);
     }
 
     @Override
     public StellaType visitDotTuple(StellaParser.DotTupleContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
-        StellaType type = ctx.expr_.accept(this);
+        int index = Integer.parseInt(ctx.index.getText());
+
+        StellaType type;
+        if (registry.isTypeReconstructionEnabled()) {
+            StellaType indexType = maybeExpected.orElseGet(() -> StellaType.FreshVar.create(ctx.expr_));
+            if (index == 1) {
+                registry.addExpectedType(new StellaType.Tuple(List.of(indexType, StellaType.FreshVar.create(ctx.expr_))));
+            } else if (index == 2) {
+                registry.addExpectedType(new StellaType.Tuple(List.of(StellaType.FreshVar.create(ctx.expr_), indexType)));
+            } else {
+                throw new IllegalStateException(); //TODO type reconstruction only for pairs
+            }
+            type = ctx.expr_.accept(this);
+            if (type instanceof StellaType.FreshVar) {
+                maybeExpected.ifPresent(registry::addExpectedType);
+                return returnChecked(indexType, ctx);
+            }
+        } else {
+            type = ctx.expr_.accept(this);
+        }
+
         if (!(type instanceof StellaType.Tuple(List<StellaType> itemTypes))) {
             throw new ErrorNotATuple(ctx.expr_, type);
         }
-        int index = Integer.parseInt(ctx.index.getText());
+
         if (index > itemTypes.size()) {
             throw new ErrorTupleIndexOutOfBounds(ctx.expr_, itemTypes.size(), index);
         }
@@ -369,30 +445,50 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region itemType sum + variant + match
     @Override
     public StellaType visitInl(StellaParser.InlContext ctx) {
-        Optional<StellaType.Sum> maybeExpectedSum = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        Optional<StellaType.Sum> maybeExpectedSum = maybeExpected.flatMap(expected -> {
+            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar) {
+                return Optional.empty();
+            }
             if (!(expected instanceof StellaType.Sum expectedSum)) {
                 throw new ErrorUnexpectedInjection(ctx, expected);
             }
-            return expectedSum;
+            return Optional.of(expectedSum);
         });
 
         maybeExpectedSum.ifPresent(expectedSum -> registry.addExpectedType(expectedSum.inl()));
-        ctx.expr_.accept(this);
-        return maybeExpectedSum.orElseThrow(() -> new ErrorAmbiguousSumType(ctx));
+        StellaType type = ctx.expr_.accept(this);
+
+        if (registry.isTypeReconstructionEnabled()) {
+            maybeExpected.ifPresent(registry::addExpectedType);
+            return returnChecked(new StellaType.Sum(type, StellaType.FreshVar.create(ctx)), ctx);
+        } else {
+            return maybeExpectedSum.orElseThrow(() -> new ErrorAmbiguousSumType(ctx));
+        }
     }
 
     @Override
     public StellaType visitInr(StellaParser.InrContext ctx) {
-        Optional<StellaType.Sum> maybeExpectedSum = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        Optional<StellaType.Sum> maybeExpectedSum = maybeExpected.flatMap(expected -> {
+            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar) {
+                return Optional.empty();
+            }
             if (!(expected instanceof StellaType.Sum expectedSum)) {
                 throw new ErrorUnexpectedInjection(ctx, expected);
             }
-            return expectedSum;
+            return Optional.of(expectedSum);
         });
 
         maybeExpectedSum.ifPresent(expectedSum -> registry.addExpectedType(expectedSum.inr()));
-        ctx.expr_.accept(this);
-        return maybeExpectedSum.orElseThrow(() -> new ErrorAmbiguousSumType(ctx));
+        StellaType type = ctx.expr_.accept(this);
+
+        if (registry.isTypeReconstructionEnabled()) {
+            maybeExpected.ifPresent(registry::addExpectedType);
+            return returnChecked(new StellaType.Sum(StellaType.FreshVar.create(ctx), type), ctx);
+        } else {
+            return maybeExpectedSum.orElseThrow(() -> new ErrorAmbiguousSumType(ctx));
+        }
     }
 
     @Override
@@ -468,11 +564,15 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     //region list
     @Override
     public StellaType visitConsList(StellaParser.ConsListContext ctx) {
-        Optional<StellaType.StellaList> maybeExpectedList = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        Optional<StellaType.StellaList> maybeExpectedList = maybeExpected.flatMap(expected -> {
+            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar) {
+                return Optional.empty();
+            }
             if (!(expected instanceof StellaType.StellaList expectedList)) {
                 throw new ErrorUnexpectedList(ctx, expected);
             }
-            return expectedList;
+            return Optional.of(expectedList);
         });
 
         maybeExpectedList.ifPresent(expectedList -> registry.addExpectedType(expectedList.itemType()));
@@ -482,21 +582,30 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         registry.addExpectedType(listType);
         ctx.tail.accept(this);
 
-        maybeExpectedList.ifPresent(registry::addExpectedType);
+        maybeExpected.ifPresent(registry::addExpectedType);
         return returnChecked(listType, ctx);
     }
 
     @Override
     public StellaType visitList(StellaParser.ListContext ctx) {
-        Optional<StellaType.StellaList> maybeExpectedList = registry.consumeExpectedType().map(expected -> {
+        Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        Optional<StellaType.StellaList> maybeExpectedList = maybeExpected.flatMap(expected -> {
+            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar) {
+                return Optional.empty();
+            }
             if (!(expected instanceof StellaType.StellaList expectedList)) {
                 throw new ErrorUnexpectedList(ctx, expected);
             }
-            return expectedList;
+            return Optional.of(expectedList);
         });
 
         if (ctx.exprs.isEmpty()) {
-            return maybeExpectedList.orElseThrow(() -> new ErrorAmbiguousList(ctx));
+            if (registry.isTypeReconstructionEnabled()) {
+                maybeExpected.ifPresent(registry::addExpectedType);
+                return returnChecked(new StellaType.StellaList(StellaType.FreshVar.create(ctx)), ctx);
+            } else {
+                return maybeExpectedList.orElseThrow(() -> new ErrorAmbiguousList(ctx));
+            }
         }
 
         maybeExpectedList.ifPresent(expectedList -> registry.addExpectedType(expectedList.itemType()));
@@ -505,13 +614,28 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
             registry.addExpectedType(itemType);
             ctx.exprs.get(i).accept(this);
         }
+
+        maybeExpected.ifPresent(registry::addExpectedType);
         return returnChecked(new StellaType.StellaList(itemType), ctx);
     }
 
     @Override
     public StellaType visitHead(StellaParser.HeadContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
-        StellaType type = ctx.list.accept(this);
+
+        StellaType type;
+        if (registry.isTypeReconstructionEnabled()) {
+            StellaType itemType = maybeExpected.orElseGet(() -> StellaType.FreshVar.create(ctx.list));
+            registry.addExpectedType(new StellaType.StellaList(itemType));
+            type = ctx.list.accept(this);
+            if (type instanceof StellaType.FreshVar) {
+                maybeExpected.ifPresent(registry::addExpectedType);
+                return returnChecked(itemType, ctx);
+            }
+        } else {
+            type = ctx.list.accept(this);
+        }
+
         if (!(type instanceof StellaType.StellaList(StellaType itemType))) {
             throw new ErrorNotAList(ctx.list, type);
         }
@@ -523,7 +647,20 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     @Override
     public StellaType visitTail(StellaParser.TailContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
-        StellaType type = ctx.list.accept(this);
+
+        StellaType type;
+        if (registry.isTypeReconstructionEnabled()) {
+            StellaType listType = maybeExpected.orElseGet(() -> StellaType.FreshVar.create(ctx.list));
+            registry.addExpectedType(listType);
+            type = ctx.list.accept(this);
+            if (type instanceof StellaType.FreshVar) {
+                maybeExpected.ifPresent(registry::addExpectedType);
+                return returnChecked(listType, ctx);
+            }
+        } else {
+            type = ctx.list.accept(this);
+        }
+
         if (!(type instanceof StellaType.StellaList(StellaType itemType))) {
             throw new ErrorNotAList(ctx.list, type);
         }
@@ -535,7 +672,19 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     @Override
     public StellaType visitIsEmpty(StellaParser.IsEmptyContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
-        StellaType type = ctx.list.accept(this);
+
+        StellaType type;
+        if (registry.isTypeReconstructionEnabled()) {
+            registry.addExpectedType(new StellaType.StellaList(StellaType.FreshVar.create(ctx.list)));
+            type = ctx.list.accept(this);
+            if (type instanceof StellaType.FreshVar) {
+                maybeExpected.ifPresent(registry::addExpectedType);
+                return returnChecked(new StellaType.Bool(), ctx);
+            }
+        } else {
+            type = ctx.list.accept(this);
+        }
+
         if (!(type instanceof StellaType.StellaList)) {
             throw new ErrorNotAList(ctx.list, type);
         }
@@ -572,7 +721,7 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         }
 
         if (!inTypes.getFirst().matches(outType)) {
-            throw new ErrorUnexpectedTypeForExpression(ctx.expr_,
+            throw new ErrorUnexpectedTypeForStrictExpression(ctx.expr_,
                     new StellaType.Func(inTypes, inTypes.getFirst()),
                     new StellaType.Func(inTypes, outType)
             );
@@ -714,6 +863,5 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         return returnChecked(result, ctx);
     }
-
     //endregion
 }

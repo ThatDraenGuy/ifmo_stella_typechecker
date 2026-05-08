@@ -151,6 +151,12 @@ public class StellaPatternResolver {
                     default -> throw new ErrorUnexpectedPatternForType(pattern, type);
                 }
             }
+            case StellaType.Forall forall -> {
+                //TODO
+            }
+            case StellaType.TypeVar typeVar -> {
+                //TODO
+            }
         };
     }
 
@@ -507,6 +513,8 @@ public class StellaPatternResolver {
             case StellaType.Func func -> {
                 throw new ErrorUnexpectedPatternForType(pattern, type);
             }
+            case StellaType.Forall forall -> null; //TODO
+            case StellaType.TypeVar typeVar -> null; //TODO
         };
     }
 
