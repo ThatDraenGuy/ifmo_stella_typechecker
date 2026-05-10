@@ -133,8 +133,10 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
     @Override
     public StellaType visitAbstraction(StellaParser.AbstractionContext ctx) {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
+        List<StellaType> paramTypes = ctx.paramDecls.stream().map(decl -> StellaType.fromAst(decl.paramType)).toList();
+
         Optional<StellaType.Func> maybeExpectedFunc = maybeExpected.flatMap(expected -> {
-            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar var) {
+            if (registry.isTypeReconstructionEnabled() && expected instanceof StellaType.FreshVar) {
                 return Optional.empty();
             }
 
@@ -148,11 +150,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
             IntStream.range(0, ctx.paramDecls.size()).forEach(i -> {
                 StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
+                StellaType paramType = paramTypes.get(i);
                 if (registry.isTypeReconstructionEnabled()) {
                     registry.addExpectedType(expectedFunc.in().get(i));
-                    returnChecked(StellaType.fromAst(paramDecl.paramType), ctx);
+                    returnChecked(paramType, ctx);
                 } else {
-                    StellaType paramType = StellaType.fromAst(paramDecl.paramType);
                     if (!paramType.matches(expectedFunc.in().get(i))) {
                         throw new ErrorUnexpectedTypeForParameter(paramDecl, expectedFunc.in().get(i), paramType);
                     }
@@ -165,12 +167,13 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         StellaType returnType;
         try {
             registry.enterScope(ctx.getText());
-            for (StellaParser.ParamDeclContext paramDecl : ctx.paramDecls) {
-                StellaType paramType = StellaType.fromAst(paramDecl.paramType); //TODO fix!!!!!
+            IntStream.range(0, ctx.paramDecls.size()).forEach(i -> {
+                StellaParser.ParamDeclContext paramDecl = ctx.paramDecls.get(i);
+                StellaType paramType = paramTypes.get(i);
                 if (registry.addVar(paramDecl.name.getText(), paramType)) {
                     throw new ErrorDuplicateFunctionParameter(ctx, paramDecl.name.getText());
                 }
-            }
+            });
 
             maybeExpectedFunc.ifPresent(expectedFunc -> registry.addExpectedType(expectedFunc.out()));
             returnType = ctx.returnExpr.accept(this);
