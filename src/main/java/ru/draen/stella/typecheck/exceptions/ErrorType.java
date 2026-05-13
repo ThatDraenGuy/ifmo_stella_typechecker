@@ -54,6 +54,7 @@ public enum ErrorType {
     ERROR_DUPLICATE_PATTERN_VARIABLE(-1, ErrorDuplicatePatternVariable.class, true),
 
     //stage3
+    ERROR_OCCURS_CHECK_INFINITE_TYPE(39, ErrorOccursCheckInfiniteType.class),
 
     //extra
     ERROR_AMBIGUOUS_TYPE(-1, ErrorAmbiguousTypeVar.class, true)

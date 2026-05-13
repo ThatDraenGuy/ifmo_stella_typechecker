@@ -538,7 +538,10 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
 
         List<StellaPattern> notExhausted = type.allPossiblePatterns();
         for (StellaParser.MatchCaseContext matchCase : ctx.cases) {
-            var result = new StellaPatternResolver(matchCase.pattern_, type).resolve(notExhausted);
+            var result = (registry.isTypeReconstructionEnabled()
+                    ? new ReconstructPatternResolver(registry, ctx, matchCase.pattern_, type)
+                    : new StrictPatternResolver(matchCase.pattern_, type))
+                    .resolve(notExhausted);
             notExhausted = result.notExhausted();
             try {
                 registry.enterScope(matchCase.getText());
@@ -741,9 +744,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType exprType = ctx.patternBinding.rhs.accept(this);
 
-        StellaPatternResolver.Result patResult;
+        StrictPatternResolver.Result patResult;
         try {
-            patResult = new StellaPatternResolver(ctx.patternBinding.pat, exprType)
+            patResult = (registry.isTypeReconstructionEnabled()
+                    ? new ReconstructPatternResolver(registry, ctx, ctx.patternBinding.pat, exprType)
+                    : new StrictPatternResolver(ctx.patternBinding.pat, exprType))
                     .resolve(exprType.allPossiblePatterns());
         } catch (ErrorDuplicatePatternVariable e) {
             throw new ErrorDuplicateLetBinding(ctx, e.getVariable());
@@ -837,9 +842,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         Optional<StellaType> maybeExpected = registry.consumeExpectedType();
         StellaType patternType = resolvePatternType(ctx.patternBinding.pat);
 
-        StellaPatternResolver.Result patResult;
+        StrictPatternResolver.Result patResult;
         try {
-            patResult = new StellaPatternResolver(ctx.patternBinding.pat, patternType)
+            patResult = (registry.isTypeReconstructionEnabled()
+                    ? new ReconstructPatternResolver(registry, ctx, ctx.patternBinding.pat, patternType)
+                    : new StrictPatternResolver(ctx.patternBinding.pat, patternType))
                     .resolve(patternType.allPossiblePatterns());
         } catch (ErrorDuplicatePatternVariable e) {
             throw new ErrorDuplicateLetBinding(ctx, e.getVariable());

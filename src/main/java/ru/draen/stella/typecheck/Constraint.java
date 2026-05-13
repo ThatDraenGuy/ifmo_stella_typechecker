@@ -1,9 +1,10 @@
 package ru.draen.stella.typecheck;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.misc.Interval;
 import ru.draen.stella.generated.StellaParser;
 
-public record Constraint(StellaType actual, StellaType expected, StellaParser.ExprContext ctx) {
+public record Constraint(StellaType actual, StellaType expected, ParserRuleContext ctx) {
     @Override
     public String toString() {
         int start = ctx.start.getStartIndex();

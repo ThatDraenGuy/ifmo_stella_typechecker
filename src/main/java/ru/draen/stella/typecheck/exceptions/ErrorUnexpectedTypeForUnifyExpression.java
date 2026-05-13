@@ -1,23 +1,22 @@
 package ru.draen.stella.typecheck.exceptions;
 
 import org.antlr.v4.runtime.ParserRuleContext;
-import ru.draen.stella.generated.StellaParser;
 import ru.draen.stella.typecheck.StellaType;
 
 public class ErrorUnexpectedTypeForUnifyExpression extends ErrorUnexpectedTypeForExpression {
-    private final StellaParser.ExprContext expr;
+    private final ParserRuleContext ctx;
     private final StellaType expected;
     private final StellaType actual;
 
-    public ErrorUnexpectedTypeForUnifyExpression(StellaParser.ExprContext expr, StellaType expected, StellaType actual) {
-        this.expr = expr;
+    public ErrorUnexpectedTypeForUnifyExpression(ParserRuleContext ctx, StellaType expected, StellaType actual) {
+        this.ctx = ctx;
         this.expected = expected;
         this.actual = actual;
     }
 
     @Override
     protected ParserRuleContext getSource() {
-        return expr;
+        return ctx;
     }
 
     @Override

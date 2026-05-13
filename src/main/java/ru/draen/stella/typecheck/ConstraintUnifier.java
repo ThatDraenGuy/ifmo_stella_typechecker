@@ -7,7 +7,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class ConstraintUnifier {
-    private final Queue<Constraint> constraints = new ArrayDeque<>();
+    private final Deque<Constraint> constraints = new ArrayDeque<>();
 
     public void add(Constraint constraint) {
         constraints.add(constraint);
@@ -17,15 +17,15 @@ public class ConstraintUnifier {
         return unify(constraints);
     }
 
-    private static Queue<Constraint> replace(Queue<Constraint> constraints, TypeMapping mapping) {
+    private static Deque<Constraint> replace(Deque<Constraint> constraints, TypeMapping mapping) {
         return constraints.stream()
                 .map(constraint ->
                         new Constraint(constraint.actual().replace(mapping), constraint.expected().replace(mapping), constraint.ctx()))
                 .collect(Collectors.toCollection(ArrayDeque::new));
     }
 
-    private static Deque<TypeMapping> unify(Queue<Constraint> constraints) {
-        if (constraints.isEmpty()) return new LinkedList<>();
+    private static Deque<TypeMapping> unify(Deque<Constraint> constraints) {
+        if (constraints.isEmpty()) return new ArrayDeque<>();
         Constraint constraint = constraints.poll();
         StellaType lhs = constraint.actual();
         StellaType rhs = constraint.expected();
@@ -52,26 +52,26 @@ public class ConstraintUnifier {
             case StellaType.Sum(StellaType lhsInl, StellaType lhsInr) -> {
                 if (!(rhs instanceof StellaType.Sum(StellaType rhsInl, StellaType rhsInr)))
                     break;
-                constraints.add(new Constraint(lhsInl, rhsInl, constraint.ctx()));
-                constraints.add(new Constraint(lhsInr, rhsInr, constraint.ctx()));
+                constraints.addFirst(new Constraint(lhsInl, rhsInl, constraint.ctx()));
+                constraints.addFirst(new Constraint(lhsInr, rhsInr, constraint.ctx()));
                 return unify(constraints);
             }
             case StellaType.Tuple(List<StellaType> lhsItems) -> {
                 if (!(rhs instanceof StellaType.Tuple(List<StellaType> rhsItems)))
                     break;
                 if (lhsItems.size() != 2 || rhsItems.size() != 2)
-                    throw new IllegalStateException(); //TODO
-                constraints.add(new Constraint(lhsItems.getFirst(), rhsItems.getFirst(), constraint.ctx()));
-                constraints.add(new Constraint(lhsItems.getLast(), rhsItems.getLast(), constraint.ctx()));
+                    throw new IllegalStateException("Реконструкция типов не поддерживается для кортежей");
+                constraints.addFirst(new Constraint(lhsItems.getFirst(), rhsItems.getFirst(), constraint.ctx()));
+                constraints.addFirst(new Constraint(lhsItems.getLast(), rhsItems.getLast(), constraint.ctx()));
                 return unify(constraints);
             }
             case StellaType.Func(List<StellaType> lhsIn, StellaType lhsOut) -> {
                 if (!(rhs instanceof StellaType.Func(List<StellaType> rhsIn, StellaType rhsOut)))
                     break;
                 if (lhsIn.size() != 1 || rhsIn.size() != 1)
-                    throw new IllegalStateException(); //TODO
-                constraints.add(new Constraint(lhsIn.getFirst(), rhsIn.getFirst(), constraint.ctx()));
-                constraints.add(new Constraint(lhsOut, rhsOut, constraint.ctx()));
+                    throw new IllegalStateException("Реконструкция типов не поддерживается для функций с числом параметров не равным 1");
+                constraints.addFirst(new Constraint(lhsIn.getFirst(), rhsIn.getFirst(), constraint.ctx()));
+                constraints.addFirst(new Constraint(lhsOut, rhsOut, constraint.ctx()));
                 return unify(constraints);
             }
             case StellaType.Nat ignored -> {
