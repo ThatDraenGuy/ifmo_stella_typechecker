@@ -17,6 +17,7 @@ public class TypeCheckRegistry {
 
     public TypeCheckRegistry() {
         enterScope("GLOBAL");
+        StellaType.FreshVar.clear();
     }
 
 

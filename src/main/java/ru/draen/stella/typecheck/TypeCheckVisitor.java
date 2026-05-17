@@ -270,11 +270,11 @@ public class TypeCheckVisitor extends StellaParserBaseVisitor<StellaType> {
         StellaType funcType;
         if (registry.isTypeReconstructionEnabled()) {
             StellaType returnType = maybeExpected.orElseGet(() -> StellaType.FreshVar.create(ctx.expr));
-            registry.addExpectedType(new StellaType.Func(List.of(StellaType.FreshVar.create(ctx.fun)), returnType));
+            StellaType expectedFunc = new StellaType.Func(List.of(StellaType.FreshVar.create(ctx.fun)), returnType);
+            registry.addExpectedType(expectedFunc);
             funcType = ctx.fun.accept(this);
             if (funcType instanceof StellaType.FreshVar) {
-                maybeExpected.ifPresent(registry::addExpectedType);
-                return returnChecked(returnType, ctx);
+                funcType = expectedFunc;
             }
         } else {
             funcType = ctx.fun.accept(this);

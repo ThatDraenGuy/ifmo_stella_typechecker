@@ -411,6 +411,10 @@ public sealed interface StellaType {
         public static List<StellaType> all() {
             return allFreshVars;
         }
+        public static void clear() {
+            allFreshVars.clear();
+            LAST_ID = 0;
+        }
 
         @Override
         public String toString() {
