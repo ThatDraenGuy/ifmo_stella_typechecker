@@ -4,9 +4,12 @@ import org.antlr.v4.runtime.ParserRuleContext;
 import ru.draen.stella.generated.StellaParser;
 
 public class ErrorDuplicateFunctionDeclaration extends TypeCheckException {
-    private final StellaParser.DeclFunContext func;
+    private final StellaParser.DeclContext func;
 
     public ErrorDuplicateFunctionDeclaration(StellaParser.DeclFunContext func) {
+        this.func = func;
+    }
+    public ErrorDuplicateFunctionDeclaration(StellaParser.DeclFunGenericContext func) {
         this.func = func;
     }
 

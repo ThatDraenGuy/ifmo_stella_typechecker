@@ -55,9 +55,13 @@ public enum ErrorType {
 
     //stage3
     ERROR_OCCURS_CHECK_INFINITE_TYPE(39, ErrorOccursCheckInfiniteType.class),
+    ERROR_NOT_A_GENERIC_FUNCTION(40, ErrorNotAGenericFunction.class),
+    ERROR_INCORRECT_NUMBER_OF_TYPE_ARGUMENTS(41, ErrorIncorrectNumberOfTypeArguments.class),
+    ERROR_UNDEFINED_TYPE_VARIABLE(42, ErrorUndefinedTypeVariable.class),
 
     //extra
-    ERROR_AMBIGUOUS_TYPE(-1, ErrorAmbiguousTypeVar.class, true)
+    ERROR_AMBIGUOUS_TYPE(-1, ErrorAmbiguousTypeVar.class, true),
+    ERROR_DUPLICATE_TYPE_PARAMETER(-1, ErrorDuplicateTypeParameter.class, true)
     ;
 
     private final int number;

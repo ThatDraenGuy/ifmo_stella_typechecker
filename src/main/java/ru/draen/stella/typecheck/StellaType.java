@@ -1,13 +1,8 @@
 package ru.draen.stella.typecheck;
 
 import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.Token;
 import ru.draen.stella.Utils;
-import ru.draen.stella.generated.StellaParser;
-import ru.draen.stella.typecheck.exceptions.ErrorAmbiguousTypeVar;
-import ru.draen.stella.typecheck.exceptions.ErrorDuplicateRecordTypeFields;
-import ru.draen.stella.typecheck.exceptions.ErrorDuplicateVariantTypeFields;
-import ru.draen.stella.typecheck.exceptions.UnsupportedException;
+import ru.draen.stella.typecheck.exceptions.*;
 
 import java.util.*;
 import java.util.function.Function;
@@ -80,19 +75,6 @@ public sealed interface StellaType {
         @Override
         public String toString() {
             return "(" + in.stream().map(Objects::toString).collect(Collectors.joining(", ")) + ") -> " + out;
-        }
-
-        public static Func fromDeclFun(StellaParser.DeclFunContext ctx) {
-            return new Func(ctx.paramDecls.stream()
-                    .map(decl -> StellaType.fromAst(decl.paramType))
-                    .toList(),
-                    StellaType.fromAst(ctx.returnType));
-        }
-        public static Func fromAbstraction(StellaParser.AbstractionContext ctx, StellaType returnType) {
-            return new Func(ctx.paramDecls.stream()
-                    .map(decl -> StellaType.fromAst(decl.paramType))
-                    .toList(),
-                    returnType);
         }
 
         @Override
@@ -356,15 +338,23 @@ public sealed interface StellaType {
             itemType.checkAmbiguity();
         }
     }
-    record Forall(Map<String, NamedVar> vars, StellaType inner) implements StellaType {
+    record Forall(List<NamedVar> vars, StellaType inner) implements StellaType {
         @Override
         public String toString() {
-            return "forall " + vars.values().stream().map(Objects::toString).collect(Collectors.joining(",")) + ". " + inner.toString();
+            return "forall " + vars.stream().map(Objects::toString).collect(Collectors.joining(",")) + ". " + inner.toString();
         }
 
         @Override
         public boolean matches(StellaType other) {
-            return false;
+            if (!(other instanceof Forall(List<NamedVar> vars1, StellaType inner1)))
+                return false;
+            if (vars.size() != vars1.size())
+                return false;
+
+            for (int i = 0; i < vars.size(); i++) {
+                inner1 = inner1.replace(new TypeMapping(vars1.get(i), vars.get(i)));
+            }
+            return inner.matches(inner1);
         }
 
         @Override
@@ -374,12 +364,12 @@ public sealed interface StellaType {
 
         @Override
         public boolean contains(TypeVar var) {
-            return false; //TODO
+            return inner.contains(var);
         }
 
         @Override
         public StellaType replace(TypeMapping mapping) {
-            return null; //TODO
+            return new Forall(vars, inner.replace(mapping));
         }
     }
 
@@ -392,7 +382,7 @@ public sealed interface StellaType {
 
         @Override
         public boolean matches(StellaType other) {
-            return false;
+            return this == other;
         }
 
         @Override
@@ -402,12 +392,12 @@ public sealed interface StellaType {
 
         @Override
         public boolean contains(TypeVar var) {
-            return this == var;
+            return matches(var);
         }
 
         @Override
         public StellaType replace(TypeMapping mapping) {
-            return contains(mapping.var()) ? mapping.type() : this;
+            return matches(mapping.var()) ? mapping.type() : this;
         }
     }
     record FreshVar(int id, ParserRuleContext source) implements TypeVar {
@@ -451,54 +441,6 @@ public sealed interface StellaType {
         public void checkAmbiguity() {
             throw new ErrorAmbiguousTypeVar(this);
         }
-    }
-
-    static StellaType fromAst(StellaParser.StellatypeContext ctx) {
-        return switch (ctx) {
-            case StellaParser.TypeParensContext ctx2 -> fromAst(ctx2.type_);
-            case StellaParser.TypeBoolContext ignored -> new Bool();
-            case StellaParser.TypeNatContext ignored -> new Nat();
-            case StellaParser.TypeFunContext fun -> new Func(fun.paramTypes.stream()
-                    .map(StellaType::fromAst)
-                    .toList(),
-                    fromAst(fun.returnType));
-            case StellaParser.TypeUnitContext ignored -> new Unit();
-            case StellaParser.TypeTupleContext tuple -> new Tuple(
-                    tuple.types.stream().map(StellaType::fromAst).toList()
-            );
-            case StellaParser.TypeRecordContext record -> new Record(
-                    record.fieldTypes.stream().collect(Collectors.toMap(
-                            fieldType -> fieldType.label.getText(),
-                            fieldType -> new Record.Item(fieldType.label.getText(), StellaType.fromAst(fieldType.type_)),
-                            (fieldType1, fieldType2) -> {
-                                throw new ErrorDuplicateRecordTypeFields(record, fieldType1.name());
-                            }
-                    )));
-            case StellaParser.TypeSumContext sum -> new Sum(
-                    StellaType.fromAst(sum.left),
-                    StellaType.fromAst(sum.right)
-            );
-            case StellaParser.TypeVariantContext variant -> new Variant(
-                    variant.fieldTypes.stream().collect(Collectors.toMap(
-                            fieldType -> fieldType.label.getText(),
-                            fieldType -> new Variant.Item(fieldType.label.getText(),
-                                    Optional.ofNullable(fieldType.type_).map(StellaType::fromAst)),
-                            (fieldType1, fieldType2) -> {
-                                throw new ErrorDuplicateVariantTypeFields(variant, fieldType1.name());
-                            }
-                    ))
-            );
-            case StellaParser.TypeListContext list -> new StellaList(StellaType.fromAst(list.type_));
-            case StellaParser.TypeAutoContext auto -> FreshVar.create(auto);
-            case StellaParser.TypeForAllContext forall -> new Forall(
-                    forall.types.stream().collect(Collectors.toMap(
-                            Token::getText,
-                            type -> new NamedVar(type.getText()) //TODO think
-                    )),
-                    StellaType.fromAst(forall.type_)
-            );
-            default -> throw new UnsupportedException();
-        };
     }
 
     static boolean listMatches(List<StellaType> fst, List<StellaType> snd) {

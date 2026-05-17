@@ -12,10 +12,12 @@ import java.util.stream.Stream;
 
 public class StrictPatternResolver implements StellaPatternResolver {
     private final Map<String, StellaType> vars = new HashMap<>();
+    private final TypeCheckRegistry registry;
     private final StellaParser.PatternContext pattern;
     private final StellaType type;
 
-    public StrictPatternResolver(StellaParser.PatternContext pattern, StellaType type) {
+    public StrictPatternResolver(TypeCheckRegistry registry, StellaParser.PatternContext pattern, StellaType type) {
+        this.registry = registry;
         this.pattern = pattern;
         this.type = type;
     }
@@ -42,7 +44,7 @@ public class StrictPatternResolver implements StellaPatternResolver {
         }
 
         if (pattern instanceof StellaParser.PatternAscContext asc) {
-            if (!type.matches(StellaType.fromAst(asc.type_))) {
+            if (!type.matches(registry.fromAst(asc.type_))) {
                 throw new ErrorUnexpectedPatternForType(pattern, type);
             }
             checkPatternType(asc.pattern_, type);
@@ -55,10 +57,7 @@ public class StrictPatternResolver implements StellaPatternResolver {
                     case StellaParser.PatternFalseContext ignored -> {}
                     case StellaParser.PatternTrueContext ignored -> {}
                     default -> throw new ErrorUnexpectedPatternForType(pattern, type);
-                };
-            }
-            case StellaType.Func func -> {
-                throw new ErrorUnexpectedPatternForType(pattern, type);
+                }
             }
             case StellaType.Nat nat -> {
                 switch (pattern) {
@@ -149,13 +148,10 @@ public class StrictPatternResolver implements StellaPatternResolver {
                     default -> throw new ErrorUnexpectedPatternForType(pattern, type);
                 }
             }
-            case StellaType.Forall forall -> {
-                //TODO
+            default -> {
+                throw new ErrorUnexpectedPatternForType(pattern, type);
             }
-            case StellaType.TypeVar typeVar -> {
-                //TODO
-            }
-        };
+        }
     }
 
     private Stream<StellaPattern> resolveExhaust(StellaParser.PatternContext pattern, StellaType type, StellaPattern possible) {
@@ -164,7 +160,7 @@ public class StrictPatternResolver implements StellaPatternResolver {
         }
 
         if (pattern instanceof StellaParser.PatternAscContext asc) {
-            if (!type.matches(StellaType.fromAst(asc.type_))) {
+            if (!type.matches(registry.fromAst(asc.type_))) {
                 throw new ErrorUnexpectedPatternForType(pattern, type);
             }
             return resolveExhaust(asc.pattern_, type, possible);

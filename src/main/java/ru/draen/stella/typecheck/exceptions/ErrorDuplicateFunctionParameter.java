@@ -11,9 +11,12 @@ public class ErrorDuplicateFunctionParameter extends TypeCheckException {
         this.function = new Function.Func(func);
         this.parameter = parameter;
     }
-
     public ErrorDuplicateFunctionParameter(StellaParser.AbstractionContext lambda, String parameter) {
         this.function = new Function.Lambda(lambda);
+        this.parameter = parameter;
+    }
+    public ErrorDuplicateFunctionParameter(StellaParser.DeclFunGenericContext genericFunc, String parameter) {
+        this.function = new Function.GenericFunc(genericFunc);
         this.parameter = parameter;
     }
 
@@ -22,6 +25,7 @@ public class ErrorDuplicateFunctionParameter extends TypeCheckException {
         return switch (function) {
             case Function.Func func -> func.func;
             case Function.Lambda lambda -> lambda.lambda;
+            case Function.GenericFunc genericFunc -> genericFunc.genericFunc;
         };
     }
 
@@ -33,5 +37,6 @@ public class ErrorDuplicateFunctionParameter extends TypeCheckException {
     private sealed interface Function {
         record Func(StellaParser.DeclFunContext func) implements Function {}
         record Lambda(StellaParser.AbstractionContext lambda) implements Function {}
+        record GenericFunc(StellaParser.DeclFunGenericContext genericFunc) implements Function {}
     }
 }

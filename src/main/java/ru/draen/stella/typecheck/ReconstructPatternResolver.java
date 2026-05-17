@@ -33,7 +33,7 @@ public class ReconstructPatternResolver implements StellaPatternResolver {
                 }
             }
             case StellaParser.PatternAscContext asc -> {
-                registry.addConstraint(new Constraint(StellaType.fromAst(asc.type_), type, asc));
+                registry.addConstraint(new Constraint(registry.fromAst(asc.type_), type, asc));
                 addConstraints(asc.pattern_, type);
             }
             case StellaParser.PatternTrueContext truePat -> {
